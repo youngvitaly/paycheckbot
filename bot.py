@@ -1,4 +1,5 @@
 import os
+import random
 from psd_tools import PSDImage
 from PIL import Image, ImageDraw, ImageFont
 from dotenv import load_dotenv
@@ -7,16 +8,36 @@ from telegram import InputFile
 
 load_dotenv()
 
+# Список латамовских имён для генерации
+LATAM_NAMES = [
+    "José Alberto González Contreras",
+    "María Fernanda López Ramírez",
+    "Carlos Eduardo Pérez Díaz",
+    "Ana Sofía Rodríguez Martínez",
+    "Juan Manuel Torres Castillo",
+    "Lucía Valentina Herrera Gómez",
+    "Miguel Ángel Sánchez Vargas",
+    "Camila Alejandra Morales Ríos",
+    "Diego Andrés Fernández Cruz",
+    "Paola Andrea Ramírez Ortega"
+]
+
+def random_latam_name():
+    return random.choice(LATAM_NAMES)
+
+def random_sum():
+    return f"$ {random.randint(4500000, 5500000):,}".replace(",", ".")
+
 def fit_text_to_width(draw, text, font_path, base_size, target_width):
     """
     Подбирает размер шрифта так, чтобы текст влезал в target_width.
     """
     size = int(base_size)
     font = ImageFont.truetype(font_path, size)
-    tw, th = draw.textsize(text, font=font)
+    tb = draw.textbbox((0, 0), text, font=font)
+    tw = tb[2] - tb[0]
 
     if tw > target_width:
-        # уменьшаем размер шрифта пропорционально
         scale = target_width / tw
         size = max(1, int(size * scale))
         font = ImageFont.truetype(font_path, size)
@@ -84,10 +105,13 @@ def handle_message(update, context):
         "clientName": 466.93,
     }
 
+    # Пользователь присылает только дату и время
+    user_datetime = update.message.text.strip()
+
     replacements = {
-        "Date": "Сегодня",
-        "Sum": "$ 123",
-        "clientName": update.message.text.strip(),
+        "Date": user_datetime,
+        "Sum": random_sum(),
+        "clientName": random_latam_name(),
     }
 
     png_file = render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, widths)
