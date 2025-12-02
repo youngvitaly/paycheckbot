@@ -7,15 +7,23 @@ from telegram import InputFile
 
 load_dotenv()
 
-def draw_text_with_tracking(draw, position, text, font, fill, tracking=0):
-    """Рисует текст посимвольно с учётом трекинга (letter-spacing)."""
-    x, y = position
-    for ch in text:
-        draw.text((x, y), ch, font=font, fill=fill)
-        # ширина символа + трекинг
-        x += font.getsize(ch)[0] + tracking
+def fit_text_to_width(draw, text, font_path, base_size, target_width):
+    """
+    Подбирает размер шрифта так, чтобы текст влезал в target_width.
+    """
+    size = int(base_size)
+    font = ImageFont.truetype(font_path, size)
+    tw, th = draw.textsize(text, font=font)
 
-def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, trackings, color=(0,0,0,255)):
+    if tw > target_width:
+        # уменьшаем размер шрифта пропорционально
+        scale = target_width / tw
+        size = max(1, int(size * scale))
+        font = ImageFont.truetype(font_path, size)
+
+    return font
+
+def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, widths, color=(0,0,0,255)):
     psd = PSDImage.open(psd_path)
 
     # Скрываем исходные текстовые слои
@@ -31,11 +39,15 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, 
         if name in positions:
             x, y = positions[name]
             font_path = fonts.get(name, fonts["default"])
-            font_size = sizes.get(name, sizes["default"])
-            tracking = trackings.get(name, 0)
+            base_size = sizes.get(name, sizes["default"])
+            target_width = widths.get(name, None)
 
-            font = ImageFont.truetype(font_path, font_size)
-            draw_text_with_tracking(draw, (x, y), text, font, color, tracking)
+            if target_width:
+                font = fit_text_to_width(draw, text, font_path, base_size, target_width)
+            else:
+                font = ImageFont.truetype(font_path, int(base_size))
+
+            draw.text((x, y), text, font=font, fill=color)
 
     os.makedirs(os.path.dirname(outputs["png"]), exist_ok=True)
     base.save(outputs["png"])
@@ -60,17 +72,16 @@ def handle_message(update, context):
     }
 
     sizes = {
-        "Date": 16.84,
-        "Sum": 27.26,
-        "clientName": 18.9,
+        "Date": 17,
+        "Sum": 27,
+        "clientName": 19,
         "default": 18,
     }
 
-    trackings = {
-        "Date": -40,
-        "Sum": -40,
-        "clientName": -40,
-        "default": 0,
+    widths = {
+        "Date": 385.40,
+        "Sum": 194.91,
+        "clientName": 466.93,
     }
 
     replacements = {
@@ -79,7 +90,7 @@ def handle_message(update, context):
         "clientName": update.message.text.strip(),
     }
 
-    png_file = render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, trackings)
+    png_file = render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, widths)
     with open(png_file, "rb") as f:
         update.message.reply_document(document=InputFile(f, filename="render.png"))
 
