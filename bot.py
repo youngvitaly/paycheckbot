@@ -118,7 +118,10 @@ def button(update, context):
     elif query.data == "set_date":
         context.user_data["awaiting"] = "Date"
         keyboard = [
-            [InlineKeyboardButton('💡 Пример: "Viernes, 1 de diciembre de 2025 a las 06:26 hs"', callback_data="example_date")],
+            [InlineKeyboardButton(
+                '💡 Пример',
+                switch_inline_query_current_chat='Viernes, 1 de diciembre de 2025 a las 06:26 hs'
+            )],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -132,7 +135,10 @@ def button(update, context):
     elif query.data == "set_sum":
         context.user_data["awaiting"] = "Sum"
         keyboard = [
-            [InlineKeyboardButton('💡 Пример: "$ 4.778.223"', callback_data="example_sum")],
+            [InlineKeyboardButton(
+                "💡 Пример",
+                switch_inline_query_current_chat="$ 4.778.223"
+            )],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -146,7 +152,10 @@ def button(update, context):
     elif query.data == "set_client":
         context.user_data["awaiting"] = "clientName"
         keyboard = [
-            [InlineKeyboardButton('💡 Пример: "José Alberto González Contreras"', callback_data="example_name")],
+            [InlineKeyboardButton(
+                "💡 Пример",
+                switch_inline_query_current_chat="José Alberto González Contreras"
+            )],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -157,28 +166,12 @@ def button(update, context):
             reply_markup=reply_markup
         )
 
-    elif query.data == "example_date":
-        context.user_data["Date"] = "Viernes, 1 de diciembre de 2025 a las 06:26 hs"
-        context.user_data["awaiting"] = None
-        query.edit_message_text("✅ Дата обновлена: Viernes, 1 de diciembre de 2025 a las 06:26 hs")
-        show_menu(query, context)
-
-    elif query.data == "example_sum":
-        context.user_data["Sum"] = "$ 4.778.223"
-        context.user_data["awaiting"] = None
-        query.edit_message_text("✅ Сумма обновлена: $ 4.778.223")
-        show_menu(query, context)
-
-    elif query.data == "example_name":
-        context.user_data["clientName"] = "José Alberto González Contreras"
-        context.user_data["awaiting"] = None
-        query.edit_message_text("✅ Имя обновлено: José Alberto González Contreras")
-        show_menu(query, context)
-
     elif query.data == "generate_png":
         generate_png(update, context)
 
     elif query.data == "back_menu":
+        # Сбрасывать режим ожидания при возврате в меню необязательно, но безопасно:
+        context.user_data["awaiting"] = None
         show_menu(query, context)
 
 def handle_message(update, context):
@@ -190,6 +183,7 @@ def handle_message(update, context):
         show_menu(update, context)
         return
 
+    # Без режима ожидания — считаем ввод датой
     context.user_data["Date"] = update.message.text.strip()
     update.message.reply_text("🗓 Дата обновлена.")
     show_menu(update, context)
