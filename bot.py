@@ -3,8 +3,8 @@ import random
 from psd_tools import PSDImage
 from PIL import Image, ImageDraw, ImageFont
 from dotenv import load_dotenv
-from telegram.ext import Updater, MessageHandler, Filters
-from telegram import InputFile
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+from telegram.ext import Updater, MessageHandler, Filters, CommandHandler, CallbackQueryHandler
 
 load_dotenv()
 
@@ -66,11 +66,59 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, 
 
     os.makedirs(os.path.dirname(outputs["png"]), exist_ok=True)
     base.save(outputs["png"])
-    print(f"✅ PNG сохранён: {outputs['png']}")
     return outputs["png"]
 
+# --- Telegram Handlers ---
+
+def start(update, context):
+    keyboard = [
+        [InlineKeyboardButton("Выбрать PSD", callback_data="choose_psd")],
+        [InlineKeyboardButton("Настроить Date", callback_data="set_date")],
+        [InlineKeyboardButton("Настроить Sum", callback_data="set_sum")],
+        [InlineKeyboardButton("Настроить clientName", callback_data="set_client")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text("Все данные генерируются рандомно.\nВыберите действие:", reply_markup=reply_markup)
+
+def button(update, context):
+    query = update.callback_query
+    query.answer()
+
+    if query.data == "choose_psd":
+        keyboard = [
+            [InlineKeyboardButton("template.psd", callback_data="psd_template")],
+            [InlineKeyboardButton("invoice.psd", callback_data="psd_invoice")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text("Выберите PSD:", reply_markup=reply_markup)
+
+    elif query.data.startswith("psd_"):
+        context.user_data["psd"] = query.data.replace("psd_", "")
+        query.edit_message_text(f"Выбран PSD: {context.user_data['psd']}")
+
+    elif query.data == "set_date":
+        context.user_data["awaiting"] = "Date"
+        query.edit_message_text("Введите дату/время:")
+
+    elif query.data == "set_sum":
+        context.user_data["awaiting"] = "Sum"
+        query.edit_message_text("Введите сумму:")
+
+    elif query.data == "set_client":
+        context.user_data["awaiting"] = "clientName"
+        query.edit_message_text("Введите имя клиента:")
+
 def handle_message(update, context):
-    psd_path = "assets/template.psd"
+    awaiting = context.user_data.get("awaiting")
+    if awaiting:
+        context.user_data[awaiting] = update.message.text.strip()
+        context.user_data["awaiting"] = None
+        update.message.reply_text(f"Слой {awaiting} обновлён.")
+        return
+
+    # Пути
+    psd_file = context.user_data.get("psd", "template") + ".psd"
+    psd_path = f"assets/{psd_file}"
     outputs = {"png": "out/render.png"}
 
     fonts = {
@@ -86,11 +134,10 @@ def handle_message(update, context):
         "clientName": (57.72, 693.84),
     }
 
-    # Пересчёт pt → px при 96 dpi
     sizes = {
-        "Date": int(16.84 * 96 / 72),        # ≈ 22
-        "Sum": int(27.26 * 96 / 72),         # ≈ 36
-        "clientName": int(18.9 * 96 / 72),   # ≈ 25
+        "Date": int(16.84 * 96 / 72),        # ≈ 22 px
+        "Sum": int(27.26 * 96 / 72),         # ≈ 36 px
+        "clientName": int(18.9 * 96 / 72),   # ≈ 25 px
         "default": 24,
     }
 
@@ -100,12 +147,11 @@ def handle_message(update, context):
         "clientName": 466.93,
     }
 
-    user_datetime = update.message.text.strip()
-
+    # Данные: если слой не настроен вручную, берём рандом
     replacements = {
-        "Date": user_datetime,
-        "Sum": random_sum(),
-        "clientName": random_latam_name(),
+        "Date": context.user_data.get("Date", update.message.text.strip()),
+        "Sum": context.user_data.get("Sum", random_sum()),
+        "clientName": context.user_data.get("clientName", random_latam_name()),
     }
 
     png_file = render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, widths)
@@ -117,6 +163,8 @@ if __name__ == "__main__":
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
 
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CallbackQueryHandler(button))
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
 
     updater.start_polling()
