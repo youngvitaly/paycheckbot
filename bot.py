@@ -1,5 +1,6 @@
 import os
 import random
+from datetime import datetime
 from psd_tools import PSDImage
 from PIL import Image, ImageDraw, ImageFont
 from dotenv import load_dotenv
@@ -26,6 +27,15 @@ def random_latam_name():
 
 def random_sum():
     return f"$ {random.randint(4500000, 5500000):,}".replace(",", ".")
+
+def current_datetime_str():
+    now = datetime.now()
+    dias = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
+    meses = ["enero","febrero","marzo","abril","mayo","junio","julio",
+             "agosto","septiembre","octubre","noviembre","diciembre"]
+    dia_semana = dias[now.weekday()]
+    mes_nombre = meses[now.month-1]
+    return f"{dia_semana}, {now.day} de {mes_nombre} de {now.year} a las {now.strftime('%H:%M')} hs"
 
 def fit_text_to_width(draw, text, font_path, base_size, target_width):
     size = int(base_size)
@@ -73,7 +83,7 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, 
 def show_menu(update_or_query, context):
     keyboard = [
         [InlineKeyboardButton("📂 Выбрать PSD", callback_data="choose_psd")],
-        [InlineKeyboardButton("🗓 Настроить Date", callback_data="set_date")],
+        [InlineKeyboardButton("🗓 Настроить Дату", callback_data="set_date")],
         [InlineKeyboardButton("💰 Настроить Sum", callback_data="set_sum")],
         [InlineKeyboardButton("👤 Настроить clientName", callback_data="set_client")],
         [InlineKeyboardButton("🖼 Сгенерировать PNG", callback_data="generate_png")]
@@ -109,17 +119,21 @@ def button(update, context):
 
     elif query.data == "set_date":
         context.user_data["awaiting"] = "Date"
-        query.edit_message_text("🗓 Введите дату/время:\n⬅️ Назад в меню доступен ниже",
-                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]]))
+        query.edit_message_text(
+            "🗓 Введите дату и время:\n"
+            "к примеру \"Viernes, 1 de diciembre de 2025 a las 06:26 hs\"\n\n"
+            "⬅️ Или вернитесь в меню (дата выставится сегодняшняя)",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]])
+        )
 
     elif query.data == "set_sum":
         context.user_data["awaiting"] = "Sum"
-        query.edit_message_text("💰 Введите сумму:\n⬅️ Назад в меню доступен ниже",
+        query.edit_message_text("💰 Введите сумму:\n⬅️ Или вернитесь в меню (сумма выставится рандомная)",
                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]]))
 
     elif query.data == "set_client":
         context.user_data["awaiting"] = "clientName"
-        query.edit_message_text("👤 Введите имя клиента:\n⬅️ Назад в меню доступен ниже",
+        query.edit_message_text("👤 Введите имя клиента:\n⬅️ Или вернитесь в меню (имя выставится рандомное)",
                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]]))
 
     elif query.data == "generate_png":
@@ -174,7 +188,7 @@ def generate_png(update, context):
     }
 
     replacements = {
-        "Date": context.user_data.get("Date", "Сегодня"),
+        "Date": context.user_data.get("Date", current_datetime_str()),
         "Sum": context.user_data.get("Sum", random_sum()),
         "clientName": context.user_data.get("clientName", random_latam_name()),
     }
