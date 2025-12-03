@@ -8,7 +8,6 @@ from telegram import InputFile
 
 load_dotenv()
 
-# Список латамовских имён для генерации
 LATAM_NAMES = [
     "José Alberto González Contreras",
     "María Fernanda López Ramírez",
@@ -29,9 +28,6 @@ def random_sum():
     return f"$ {random.randint(4500000, 5500000):,}".replace(",", ".")
 
 def fit_text_to_width(draw, text, font_path, base_size, target_width):
-    """
-    Подбирает размер шрифта так, чтобы текст влезал в target_width.
-    """
     size = int(base_size)
     font = ImageFont.truetype(font_path, size)
     tb = draw.textbbox((0, 0), text, font=font)
@@ -47,7 +43,6 @@ def fit_text_to_width(draw, text, font_path, base_size, target_width):
 def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, widths, color=(0,0,0,255)):
     psd = PSDImage.open(psd_path)
 
-    # Скрываем исходные текстовые слои
     for layer in psd.descendants():
         if layer.kind == "type" and layer.name in replacements:
             layer.visible = False
@@ -55,7 +50,6 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, 
     base = psd.composite().convert("RGBA")
     draw = ImageDraw.Draw(base)
 
-    # Рисуем новый текст по фиксированным координатам
     for name, text in replacements.items():
         if name in positions:
             x, y = positions[name]
@@ -92,11 +86,12 @@ def handle_message(update, context):
         "clientName": (57.72, 693.84),
     }
 
+    # Пересчёт pt → px при 96 dpi
     sizes = {
-        "Date": 17,
-        "Sum": 27,
-        "clientName": 19,
-        "default": 18,
+        "Date": int(16.84 * 96 / 72),        # ≈ 22
+        "Sum": int(27.26 * 96 / 72),         # ≈ 36
+        "clientName": int(18.9 * 96 / 72),   # ≈ 25
+        "default": 24,
     }
 
     widths = {
@@ -105,7 +100,6 @@ def handle_message(update, context):
         "clientName": 466.93,
     }
 
-    # Пользователь присылает только дату и время
     user_datetime = update.message.text.strip()
 
     replacements = {
