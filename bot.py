@@ -42,38 +42,30 @@ def fit_text_to_width(draw, text, font_path, base_size, target_width):
     font = ImageFont.truetype(font_path, size)
     tb = draw.textbbox((0, 0), text, font=font)
     tw = tb[2] - tb[0]
-
     if tw > target_width:
         scale = target_width / tw
         size = max(1, int(size * scale))
         font = ImageFont.truetype(font_path, size)
-
     return font
 
 def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, widths, color=(0, 0, 0, 255)):
     psd = PSDImage.open(psd_path)
-
     for layer in psd.descendants():
         if layer.kind == "type" and layer.name in replacements:
             layer.visible = False
-
     base = psd.composite().convert("RGBA")
     draw = ImageDraw.Draw(base)
-
     for name, text in replacements.items():
         if name in positions:
             x, y = positions[name]
             font_path = fonts.get(name, fonts["default"])
             base_size = sizes.get(name, sizes["default"])
             target_width = widths.get(name, None)
-
             if target_width:
                 font = fit_text_to_width(draw, text, font_path, base_size, target_width)
             else:
                 font = ImageFont.truetype(font_path, int(base_size))
-
             draw.text((x, y), text, font=font, fill=color)
-
     os.makedirs(os.path.dirname(outputs["png"]), exist_ok=True)
     base.save(outputs["png"])
     return outputs["png"]
@@ -87,7 +79,6 @@ def show_menu(update_or_query, context):
         [InlineKeyboardButton("🖼 Сгенерировать PNG", callback_data="generate_png")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     if hasattr(update_or_query, "message"):
         update_or_query.message.reply_text("📋 Главное меню:", reply_markup=reply_markup)
     else:
@@ -119,8 +110,8 @@ def button(update, context):
         context.user_data["awaiting"] = "Date"
         keyboard = [
             [InlineKeyboardButton(
-                '💡 Пример',
-                switch_inline_query_current_chat='Viernes, 1 de diciembre de 2025 a las 06:26 hs'
+                "💡 Скопировать пример",
+                switch_inline_query_current_chat="@alreadypaidbot Viernes, 1 de diciembre de 2025 a las 06:26 hs"
             )],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
@@ -136,7 +127,7 @@ def button(update, context):
         context.user_data["awaiting"] = "Sum"
         keyboard = [
             [InlineKeyboardButton(
-                "💡 Пример",
+                "💡 Скопировать пример",
                 switch_inline_query_current_chat="$ 4.778.223"
             )],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
@@ -153,7 +144,7 @@ def button(update, context):
         context.user_data["awaiting"] = "clientName"
         keyboard = [
             [InlineKeyboardButton(
-                "💡 Пример",
+                "💡 Скопировать пример",
                 switch_inline_query_current_chat="José Alberto González Contreras"
             )],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
@@ -170,7 +161,6 @@ def button(update, context):
         generate_png(update, context)
 
     elif query.data == "back_menu":
-        # Сбрасывать режим ожидания при возврате в меню необязательно, но безопасно:
         context.user_data["awaiting"] = None
         show_menu(query, context)
 
@@ -182,8 +172,6 @@ def handle_message(update, context):
         update.message.reply_text(f"✅ Слой {awaiting} обновлён.")
         show_menu(update, context)
         return
-
-    # Без режима ожидания — считаем ввод датой
     context.user_data["Date"] = update.message.text.strip()
     update.message.reply_text("🗓 Дата обновлена.")
     show_menu(update, context)
@@ -231,17 +219,14 @@ def generate_png(update, context):
             update.callback_query.message.reply_document(document=InputFile(f, filename="render.png"))
         else:
             update.message.reply_document(document=InputFile(f, filename="render.png"))
-
     show_menu(update, context)
 
 if __name__ == "__main__":
     TOKEN = os.getenv("TOKEN")
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
-
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CallbackQueryHandler(button))
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-
     updater.start_polling()
     updater.idle()
