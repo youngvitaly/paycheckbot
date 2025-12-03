@@ -72,21 +72,21 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, 
 
 def show_menu(update_or_query, context):
     keyboard = [
-        [InlineKeyboardButton("Выбрать PSD", callback_data="choose_psd")],
-        [InlineKeyboardButton("Настроить Date", callback_data="set_date")],
-        [InlineKeyboardButton("Настроить Sum", callback_data="set_sum")],
-        [InlineKeyboardButton("Настроить clientName", callback_data="set_client")],
-        [InlineKeyboardButton("Сгенерировать PNG", callback_data="generate_png")]
+        [InlineKeyboardButton("📂 Выбрать PSD", callback_data="choose_psd")],
+        [InlineKeyboardButton("🗓 Настроить Date", callback_data="set_date")],
+        [InlineKeyboardButton("💰 Настроить Sum", callback_data="set_sum")],
+        [InlineKeyboardButton("👤 Настроить clientName", callback_data="set_client")],
+        [InlineKeyboardButton("🖼 Сгенерировать PNG", callback_data="generate_png")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     if hasattr(update_or_query, "message"):
-        update_or_query.message.reply_text("Меню:", reply_markup=reply_markup)
+        update_or_query.message.reply_text("📋 Главное меню:", reply_markup=reply_markup)
     else:
-        update_or_query.edit_message_text("Меню:", reply_markup=reply_markup)
+        update_or_query.edit_message_text("📋 Главное меню:", reply_markup=reply_markup)
 
 def start(update, context):
-    update.message.reply_text("Все данные генерируются рандомно.")
+    update.message.reply_text("✨ Все данные генерируются рандомно.")
     show_menu(update, context)
 
 def button(update, context):
@@ -95,44 +95,51 @@ def button(update, context):
 
     if query.data == "choose_psd":
         keyboard = [
-            [InlineKeyboardButton("template.psd", callback_data="psd_template")],
-            [InlineKeyboardButton("invoice.psd", callback_data="psd_invoice")]
+            [InlineKeyboardButton("🖼 template.psd", callback_data="psd_template")],
+            [InlineKeyboardButton("📑 invoice.psd", callback_data="psd_invoice")],
+            [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text("Выберите PSD:", reply_markup=reply_markup)
+        query.edit_message_text("📂 Выберите PSD:", reply_markup=reply_markup)
 
     elif query.data.startswith("psd_"):
         context.user_data["psd"] = query.data.replace("psd_", "")
-        query.edit_message_text(f"Выбран PSD: {context.user_data['psd']}")
+        query.edit_message_text(f"✅ Выбран PSD: {context.user_data['psd']}")
         show_menu(query, context)
 
     elif query.data == "set_date":
         context.user_data["awaiting"] = "Date"
-        query.edit_message_text("Введите дату/время:")
+        query.edit_message_text("🗓 Введите дату/время:\n⬅️ Назад в меню доступен ниже",
+                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]]))
 
     elif query.data == "set_sum":
         context.user_data["awaiting"] = "Sum"
-        query.edit_message_text("Введите сумму:")
+        query.edit_message_text("💰 Введите сумму:\n⬅️ Назад в меню доступен ниже",
+                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]]))
 
     elif query.data == "set_client":
         context.user_data["awaiting"] = "clientName"
-        query.edit_message_text("Введите имя клиента:")
+        query.edit_message_text("👤 Введите имя клиента:\n⬅️ Назад в меню доступен ниже",
+                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]]))
 
     elif query.data == "generate_png":
         generate_png(update, context)
+
+    elif query.data == "back_menu":
+        show_menu(query, context)
 
 def handle_message(update, context):
     awaiting = context.user_data.get("awaiting")
     if awaiting:
         context.user_data[awaiting] = update.message.text.strip()
         context.user_data["awaiting"] = None
-        update.message.reply_text(f"Слой {awaiting} обновлён.")
+        update.message.reply_text(f"✅ Слой {awaiting} обновлён.")
         show_menu(update, context)
         return
 
     # если нет режима ожидания — просто обновляем Date
     context.user_data["Date"] = update.message.text.strip()
-    update.message.reply_text("Дата обновлена.")
+    update.message.reply_text("🗓 Дата обновлена.")
     show_menu(update, context)
 
 def generate_png(update, context):
@@ -178,6 +185,9 @@ def generate_png(update, context):
             update.callback_query.message.reply_document(document=InputFile(f, filename="render.png"))
         else:
             update.message.reply_document(document=InputFile(f, filename="render.png"))
+
+    # после отправки PNG снова показываем меню
+    show_menu(update, context)
 
 if __name__ == "__main__":
     TOKEN = os.getenv("TOKEN")
