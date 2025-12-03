@@ -70,15 +70,24 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, 
 
 # --- Telegram Handlers ---
 
-def start(update, context):
+def show_menu(update_or_query, context):
     keyboard = [
         [InlineKeyboardButton("Выбрать PSD", callback_data="choose_psd")],
         [InlineKeyboardButton("Настроить Date", callback_data="set_date")],
         [InlineKeyboardButton("Настроить Sum", callback_data="set_sum")],
-        [InlineKeyboardButton("Настроить clientName", callback_data="set_client")]
+        [InlineKeyboardButton("Настроить clientName", callback_data="set_client")],
+        [InlineKeyboardButton("Сгенерировать PNG", callback_data="generate_png")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("Все данные генерируются рандомно.\nВыберите действие:", reply_markup=reply_markup)
+
+    if hasattr(update_or_query, "message"):
+        update_or_query.message.reply_text("Меню:", reply_markup=reply_markup)
+    else:
+        update_or_query.edit_message_text("Меню:", reply_markup=reply_markup)
+
+def start(update, context):
+    update.message.reply_text("Все данные генерируются рандомно.")
+    show_menu(update, context)
 
 def button(update, context):
     query = update.callback_query
@@ -95,6 +104,7 @@ def button(update, context):
     elif query.data.startswith("psd_"):
         context.user_data["psd"] = query.data.replace("psd_", "")
         query.edit_message_text(f"Выбран PSD: {context.user_data['psd']}")
+        show_menu(query, context)
 
     elif query.data == "set_date":
         context.user_data["awaiting"] = "Date"
@@ -108,15 +118,24 @@ def button(update, context):
         context.user_data["awaiting"] = "clientName"
         query.edit_message_text("Введите имя клиента:")
 
+    elif query.data == "generate_png":
+        generate_png(update, context)
+
 def handle_message(update, context):
     awaiting = context.user_data.get("awaiting")
     if awaiting:
         context.user_data[awaiting] = update.message.text.strip()
         context.user_data["awaiting"] = None
         update.message.reply_text(f"Слой {awaiting} обновлён.")
+        show_menu(update, context)
         return
 
-    # Пути
+    # если нет режима ожидания — просто обновляем Date
+    context.user_data["Date"] = update.message.text.strip()
+    update.message.reply_text("Дата обновлена.")
+    show_menu(update, context)
+
+def generate_png(update, context):
     psd_file = context.user_data.get("psd", "template") + ".psd"
     psd_path = f"assets/{psd_file}"
     outputs = {"png": "out/render.png"}
@@ -147,16 +166,18 @@ def handle_message(update, context):
         "clientName": 466.93,
     }
 
-    # Данные: если слой не настроен вручную, берём рандом
     replacements = {
-        "Date": context.user_data.get("Date", update.message.text.strip()),
+        "Date": context.user_data.get("Date", "Сегодня"),
         "Sum": context.user_data.get("Sum", random_sum()),
         "clientName": context.user_data.get("clientName", random_latam_name()),
     }
 
     png_file = render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, widths)
     with open(png_file, "rb") as f:
-        update.message.reply_document(document=InputFile(f, filename="render.png"))
+        if hasattr(update, "callback_query"):
+            update.callback_query.message.reply_document(document=InputFile(f, filename="render.png"))
+        else:
+            update.message.reply_document(document=InputFile(f, filename="render.png"))
 
 if __name__ == "__main__":
     TOKEN = os.getenv("TOKEN")
