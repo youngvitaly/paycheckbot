@@ -128,8 +128,23 @@ def button(update, context):
 
     elif query.data == "set_sum":
         context.user_data["awaiting"] = "Sum"
-        query.edit_message_text("💰 Введите сумму:\n⬅️ Или вернитесь в меню (сумма выставится рандомная)",
-                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]]))
+        query.edit_message_text(
+            "💰 Введите сумму:\n"
+            'к примеру "$ 4.778.223"\n\n'
+            "⬅️ Или вернитесь в меню (сумма выставится рандомная от $ 4.500.000 до $ 5.500.000)",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💡 Пример: "$ 4.778.223"', callback_data="example_sum")], [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]])
+        )
+    keyboard = [
+        [InlineKeyboardButton('💡 Пример: "$ 4.778.223"', callback_data="example_sum")],
+        [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
+    ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(
+            "💰 Введите сумму:\n"
+            'к примеру "$ 4.778.223"\n\n'
+            "⬅️ Или вернитесь в меню (сумма выставится рандомная от $ 4.500.000 до $ 5.500.000)",
+            reply_markup=reply_markup
+        )
 
     elif query.data == "set_client":
         context.user_data["awaiting"] = "clientName"
