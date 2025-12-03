@@ -1,3 +1,4 @@
+```python
 import os
 import random
 from datetime import datetime
@@ -30,11 +31,11 @@ def random_sum():
 
 def current_datetime_str():
     now = datetime.now()
-    dias = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
-    meses = ["enero","febrero","marzo","abril","mayo","junio","julio",
-             "agosto","septiembre","octubre","noviembre","diciembre"]
+    dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+             "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
     dia_semana = dias[now.weekday()]
-    mes_nombre = meses[now.month-1]
+    mes_nombre = meses[now.month - 1]
     return f"{dia_semana}, {now.day} de {mes_nombre} de {now.year} a las {now.strftime('%H:%M')} hs"
 
 def fit_text_to_width(draw, text, font_path, base_size, target_width):
@@ -50,7 +51,7 @@ def fit_text_to_width(draw, text, font_path, base_size, target_width):
 
     return font
 
-def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, widths, color=(0,0,0,255)):
+def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, widths, color=(0, 0, 0, 255)):
     psd = PSDImage.open(psd_path)
 
     for layer in psd.descendants():
@@ -78,14 +79,12 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, 
     base.save(outputs["png"])
     return outputs["png"]
 
-# --- Telegram Handlers ---
-
 def show_menu(update_or_query, context):
     keyboard = [
         [InlineKeyboardButton("📂 Выбрать PSD", callback_data="choose_psd")],
         [InlineKeyboardButton("🗓 Настроить Дату", callback_data="set_date")],
-        [InlineKeyboardButton("💰 Настроить Sum", callback_data="set_sum")],
-        [InlineKeyboardButton("👤 Настроить clientName", callback_data="set_client")],
+        [InlineKeyboardButton("💰 Настроить Сумму", callback_data="set_sum")],
+        [InlineKeyboardButton("👤 Настроить Имя", callback_data="set_client")],
         [InlineKeyboardButton("🖼 Сгенерировать PNG", callback_data="generate_png")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -119,26 +118,25 @@ def button(update, context):
 
     elif query.data == "set_date":
         context.user_data["awaiting"] = "Date"
+        keyboard = [
+            [InlineKeyboardButton('💡 Пример: "Viernes, 1 de diciembre de 2025 a las 06:26 hs"', callback_data="example_date")],
+            [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         query.edit_message_text(
             "🗓 Введите дату и время:\n"
-            "к примеру \"Viernes, 1 de diciembre de 2025 a las 06:26 hs\"\n\n"
+            'к примеру "Viernes, 1 de diciembre de 2025 a las 06:26 hs"\n\n'
             "⬅️ Или вернитесь в меню (дата выставится сегодняшняя)",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]])
+            reply_markup=reply_markup
         )
 
     elif query.data == "set_sum":
         context.user_data["awaiting"] = "Sum"
-        query.edit_message_text(
-            "💰 Введите сумму:\n"
-            'к примеру "$ 4.778.223"\n\n'
-            "⬅️ Или вернитесь в меню (сумма выставится рандомная от $ 4.500.000 до $ 5.500.000)",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💡 Пример: "$ 4.778.223"', callback_data="example_sum")], [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]])
-        )
-    keyboard = [
-        [InlineKeyboardButton('💡 Пример: "$ 4.778.223"', callback_data="example_sum")],
-        [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
-    ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+        keyboard = [
+            [InlineKeyboardButton('💡 Пример: "$ 4.778.223"', callback_data="example_sum")],
+            [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         query.edit_message_text(
             "💰 Введите сумму:\n"
             'к примеру "$ 4.778.223"\n\n'
@@ -148,8 +146,35 @@ def button(update, context):
 
     elif query.data == "set_client":
         context.user_data["awaiting"] = "clientName"
-        query.edit_message_text("👤 Введите имя клиента:\n⬅️ Или вернитесь в меню (имя выставится рандомное)",
-                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]]))
+        keyboard = [
+            [InlineKeyboardButton('💡 Пример: "José Alberto González Contreras"', callback_data="example_name")],
+            [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(
+            "👤 Введите имя:\n"
+            'к примеру "José Alberto González Contreras"\n\n'
+            "⬅️ Или вернитесь в меню (имя выставится рандомное)",
+            reply_markup=reply_markup
+        )
+
+    elif query.data == "example_date":
+        context.user_data["Date"] = "Viernes, 1 de diciembre de 2025 a las 06:26 hs"
+        context.user_data["awaiting"] = None
+        query.edit_message_text("✅ Дата обновлена: Viernes, 1 de diciembre de 2025 a las 06:26 hs")
+        show_menu(query, context)
+
+    elif query.data == "example_sum":
+        context.user_data["Sum"] = "$ 4.778.223"
+        context.user_data["awaiting"] = None
+        query.edit_message_text("✅ Сумма обновлена: $ 4.778.223")
+        show_menu(query, context)
+
+    elif query.data == "example_name":
+        context.user_data["clientName"] = "José Alberto González Contreras"
+        context.user_data["awaiting"] = None
+        query.edit_message_text("✅ Имя обновлено: José Alberto González Contreras")
+        show_menu(query, context)
 
     elif query.data == "generate_png":
         generate_png(update, context)
@@ -166,7 +191,6 @@ def handle_message(update, context):
         show_menu(update, context)
         return
 
-    # если нет режима ожидания — просто обновляем Date
     context.user_data["Date"] = update.message.text.strip()
     update.message.reply_text("🗓 Дата обновлена.")
     show_menu(update, context)
@@ -215,7 +239,6 @@ def generate_png(update, context):
         else:
             update.message.reply_document(document=InputFile(f, filename="render.png"))
 
-    # после отправки PNG снова показываем меню
     show_menu(update, context)
 
 if __name__ == "__main__":
