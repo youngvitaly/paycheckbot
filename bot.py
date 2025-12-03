@@ -17,7 +17,7 @@ LATAM_NAMES = [
     "Juan Manuel Torres Castillo",
     "Lucía Valentina Herrera Gómez",
     "Miguel Ángel Sánchez Vargas",
-    "Camila Alejandra Morales Ríos",
+    "Camila Alejandra Morales Рíos",
     "Diego Andrés Fernández Cruz",
     "Paola Andrea Ramírez Ortega"
 ]
@@ -70,7 +70,26 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, 
     base.save(outputs["png"])
     return outputs["png"]
 
-def show_menu(update_or_query, context):
+# --- Message tracking and cleanup ---
+
+def track_message(context, msg_id):
+    msgs = context.user_data.get("msg_ids", set())
+    msgs.add(msg_id)
+    context.user_data["msg_ids"] = msgs
+
+def cleanup_messages(context, chat_id, preserve_ids):
+    # Delete previously tracked messages except those we want to keep
+    msgs = context.user_data.get("msg_ids", set())
+    to_delete = [mid for mid in msgs if mid not in preserve_ids]
+    for mid in to_delete:
+        try:
+            context.bot.delete_message(chat_id=chat_id, message_id=mid)
+        except Exception:
+            pass
+        msgs.discard(mid)
+    context.user_data["msg_ids"] = msgs
+
+def send_and_pin_menu(update_or_query, context):
     keyboard = [
         [InlineKeyboardButton("📂 Выбрать PSD", callback_data="choose_psd")],
         [InlineKeyboardButton("🗓 Настроить Дату", callback_data="set_date")],
@@ -79,18 +98,39 @@ def show_menu(update_or_query, context):
         [InlineKeyboardButton("🖼 Сгенерировать PNG", callback_data="generate_png")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    if hasattr(update_or_query, "message"):
-        update_or_query.message.reply_text("📋 Главное меню:", reply_markup=reply_markup)
+
+    if hasattr(update_or_query, "message") and update_or_query.message:
+        msg = update_or_query.message.reply_text("📋 Главное меню (закреплено):", reply_markup=reply_markup)
+        chat_id = update_or_query.message.chat_id
     else:
-        update_or_query.edit_message_text("📋 Главное меню:", reply_markup=reply_markup)
+        # For callback queries: send a new message (so we can pin it)
+        chat_id = update_or_query.message.chat_id
+        msg = context.bot.send_message(chat_id=chat_id, text="📋 Главное меню (закреплено):", reply_markup=reply_markup)
+
+    # Pin the menu message (wrap in try in case of insufficient rights)
+    try:
+        context.bot.pin_chat_message(chat_id=chat_id, message_id=msg.message_id)
+    except Exception:
+        pass
+
+    # Track the menu message id
+    track_message(context, msg.message_id)
+    # Save latest pinned menu id for preservation
+    context.user_data["menu_message_id"] = msg.message_id
+    return msg
+
+# --- Telegram Handlers ---
 
 def start(update, context):
-    update.message.reply_text("✨ Все данные генерируются рандомно.")
-    show_menu(update, context)
+    # Optional welcome message
+    welcome = update.message.reply_text("✨ Все данные генерируются рандомно.")
+    track_message(context, welcome.message_id)
+    send_and_pin_menu(update, context)
 
 def button(update, context):
     query = update.callback_query
     query.answer()
+    chat_id = query.message.chat_id
 
     if query.data == "choose_psd":
         keyboard = [
@@ -99,29 +139,32 @@ def button(update, context):
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text("📂 Выберите PSD:", reply_markup=reply_markup)
+        edited = query.edit_message_text("📂 Выберите PSD:", reply_markup=reply_markup)
+        track_message(context, edited.message_id)
 
     elif query.data.startswith("psd_"):
         context.user_data["psd"] = query.data.replace("psd_", "")
-        query.edit_message_text(f"✅ Выбран PSD: {context.user_data['psd']}")
-        show_menu(query, context)
+        edited = query.edit_message_text(f"✅ Выбран PSD: {context.user_data['psd']}")
+        track_message(context, edited.message_id)
+        send_and_pin_menu(query, context)
 
     elif query.data == "set_date":
         context.user_data["awaiting"] = "Date"
         keyboard = [
             [InlineKeyboardButton(
                 "💡 Скопировать пример",
-                switch_inline_query_current_chat="@alreadypaidbot Viernes, 1 de diciembre de 2025 a las 06:26 hs"
+                switch_inline_query_current_chat="Viernes, 1 de diciembre de 2025 a las 06:26 hs"
             )],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(
+        edited = query.edit_message_text(
             "🗓 Введите дату и время:\n"
             'к примеру "Viernes, 1 de diciembre de 2025 a las 06:26 hs"\n\n'
             "⬅️ Или вернитесь в меню (дата выставится сегодняшняя)",
             reply_markup=reply_markup
         )
+        track_message(context, edited.message_id)
 
     elif query.data == "set_sum":
         context.user_data["awaiting"] = "Sum"
@@ -133,12 +176,13 @@ def button(update, context):
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(
+        edited = query.edit_message_text(
             "💰 Введите сумму:\n"
             'к примеру "$ 4.778.223"\n\n'
             "⬅️ Или вернитесь в меню (сумма выставится рандомная от $ 4.500.000 до $ 5.500.000)",
             reply_markup=reply_markup
         )
+        track_message(context, edited.message_id)
 
     elif query.data == "set_client":
         context.user_data["awaiting"] = "clientName"
@@ -150,33 +194,53 @@ def button(update, context):
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(
+        edited = query.edit_message_text(
             "👤 Введите имя:\n"
             'к примеру "José Alberto González Contreras"\n\n'
             "⬅️ Или вернитесь в меню (имя выставится рандомное)",
             reply_markup=reply_markup
         )
+        track_message(context, edited.message_id)
 
     elif query.data == "generate_png":
         generate_png(update, context)
 
     elif query.data == "back_menu":
         context.user_data["awaiting"] = None
-        show_menu(query, context)
+        send_and_pin_menu(query, context)
 
 def handle_message(update, context):
+    chat_id = update.message.chat_id
     awaiting = context.user_data.get("awaiting")
+
     if awaiting:
+        saved = update.message.reply_text(f"✅ Слой {awaiting} обновлён.")
+        track_message(context, saved.message_id)
         context.user_data[awaiting] = update.message.text.strip()
         context.user_data["awaiting"] = None
-        update.message.reply_text(f"✅ Слой {awaiting} обновлён.")
-        show_menu(update, context)
+        menu_msg = send_and_pin_menu(update, context)
+        # Preserve the latest menu + the confirmation + user's message that updated the layer
+        preserve = {menu_msg.message_id, saved.message_id, update.message.message_id}
+        cleanup_messages(context, chat_id, preserve)
         return
+
+    # Treat any free text as a Date update
     context.user_data["Date"] = update.message.text.strip()
-    update.message.reply_text("🗓 Дата обновлена.")
-    show_menu(update, context)
+    saved = update.message.reply_text("🗓 Дата обновлена.")
+    track_message(context, saved.message_id)
+    menu_msg = send_and_pin_menu(update, context)
+    preserve = {menu_msg.message_id, saved.message_id, update.message.message_id}
+    cleanup_messages(context, chat_id, preserve)
 
 def generate_png(update, context):
+    # Handle both callback and normal update
+    if hasattr(update, "callback_query") and update.callback_query:
+        chat_id = update.callback_query.message.chat_id
+        origin_message_id = update.callback_query.message.message_id
+    else:
+        chat_id = update.message.chat_id
+        origin_message_id = update.message.message_id
+
     psd_file = context.user_data.get("psd", "template") + ".psd"
     psd_path = f"assets/{psd_file}"
     outputs = {"png": "out/render.png"}
@@ -214,19 +278,31 @@ def generate_png(update, context):
     }
 
     png_file = render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes, widths)
+
     with open(png_file, "rb") as f:
-        if hasattr(update, "callback_query"):
-            update.callback_query.message.reply_document(document=InputFile(f, filename="render.png"))
+        if hasattr(update, "callback_query") and update.callback_query:
+            sent = update.callback_query.message.reply_document(document=InputFile(f, filename="render.png"))
         else:
-            update.message.reply_document(document=InputFile(f, filename="render.png"))
-    show_menu(update, context)
+            sent = update.message.reply_document(document=InputFile(f, filename="render.png"))
+    # Track the PNG message id
+    track_message(context, sent.message_id)
+    context.user_data["last_png_message_id"] = sent.message_id
+
+    # Show and pin menu again
+    menu_msg = send_and_pin_menu(update.callback_query if hasattr(update, "callback_query") and update.callback_query else update, context)
+
+    # Preserve the latest PNG + latest menu + the origin message that triggered generation
+    preserve = {sent.message_id, menu_msg.message_id, origin_message_id}
+    cleanup_messages(context, chat_id, preserve)
 
 if __name__ == "__main__":
     TOKEN = os.getenv("TOKEN")
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
+
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CallbackQueryHandler(button))
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+
     updater.start_polling()
     updater.idle()
