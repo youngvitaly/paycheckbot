@@ -45,8 +45,8 @@ def sanitize_input(text: str) -> str:
     cleaned = re.sub(r'^\s*@\S+\s+', '', text)
     return cleaned.strip()
 
-def pt_to_px(pt: float, dpi: int = 96) -> int:
-    return int(round(pt * dpi / 72))
+def pt_to_px(pt: float, dpi: float = 96.0) -> int:
+    return int(round(pt * dpi / 72.0))
 
 def fit_text_to_width(draw, text, font_path, base_size_px, target_width_px):
     size = int(base_size_px)
@@ -59,10 +59,9 @@ def fit_text_to_width(draw, text, font_path, base_size_px, target_width_px):
         font = ImageFont.truetype(font_path, size)
     return font
 
-def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=(0, 0, 0, 255)):
+def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=(0,0,0,255)):
     psd = PSDImage.open(psd_path)
 
-    # Hide text layers that we will replace (if present)
     for layer in psd.descendants():
         if layer.kind == "type" and layer.name in replacements:
             layer.visible = False
@@ -106,6 +105,8 @@ def cleanup_messages(context, chat_id, preserve_ids):
         msgs.discard(mid)
     context.user_data["msg_ids"] = msgs
 
+# --- Menus helpers ---
+
 def send_and_pin_menu(update_or_query, context):
     keyboard = [
         [InlineKeyboardButton("📂 Выбрать Исходник (PSD)", callback_data="choose_psd")],
@@ -138,23 +139,39 @@ def send_and_pin_menu(update_or_query, context):
     context.user_data["menu_message_id"] = msg.message_id
     return msg
 
-# --- nalogDom submenu ---
-
-def show_nalogDom_menu(query, context):
+def show_nalogDom_menu(update_or_query, context):
     keyboard = [
-        [InlineKeyboardButton("Настроить Имя", callback_data="nalog_set_name")],
-        [InlineKeyboardButton("Настроить ID", callback_data="nalog_set_id")],
-        [InlineKeyboardButton("Настроить Вывод", callback_data="nalog_set_amount")],
-        [InlineKeyboardButton("Настроить Налог", callback_data="nalog_set_tax")],
+        [InlineKeyboardButton("👤 Настроить Имя", callback_data="nalog_set_name")],
+        [InlineKeyboardButton("🆔 Настроить ID", callback_data="nalog_set_id")],
+        [InlineKeyboardButton("💸 Настроить Вывод", callback_data="nalog_set_amount")],
+        [InlineKeyboardButton("🏷️ Настроить Налог", callback_data="nalog_set_tax")],
         [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    try:
-        edited = query.edit_message_text("📂 Настройки nalogDom.psd:", reply_markup=reply_markup)
-        track_message(context, edited.message_id)
-    except Exception:
-        msg = context.bot.send_message(chat_id=query.message.chat_id, text="📂 Настройки nalogDom.psd:", reply_markup=reply_markup)
+
+    # If called from callback query, edit that message; otherwise send new
+    if hasattr(update_or_query, "callback_query") and update_or_query.callback_query:
+        try:
+            edited = update_or_query.callback_query.edit_message_text("📂 Настройки nalogDom.psd:", reply_markup=reply_markup)
+            track_message(context, edited.message_id)
+            return edited
+        except Exception:
+            pass
+
+    if hasattr(update_or_query, "message") and update_or_query.message:
+        msg = context.bot.send_message(chat_id=update_or_query.message.chat_id, text="📂 Настройки nalogDom.psd:", reply_markup=reply_markup)
         track_message(context, msg.message_id)
+        return msg
+
+    # fallback
+    return None
+
+def show_menu_for_current_psd(update_or_query, context):
+    psd = context.user_data.get("psd")
+    if psd == "nalogDom":
+        return show_nalogDom_menu(update_or_query, context)
+    else:
+        return send_and_pin_menu(update_or_query, context)
 
 # --- Telegram Handlers and logic ---
 
@@ -181,21 +198,25 @@ def button(update, context):
             track_message(context, edited.message_id)
         except Exception:
             pass
+        return
 
-    elif query.data.startswith("psd_"):
+    if query.data.startswith("psd_"):
         context.user_data["psd"] = query.data.replace("psd_", "")
+        # show confirmation and then appropriate menu
         try:
             edited = query.edit_message_text(f"✅ Выбран PSD: {context.user_data['psd']}")
             track_message(context, edited.message_id)
         except Exception:
             pass
 
+        # If nalogDom selected — show its submenu
         if context.user_data["psd"] == "nalogDom":
             show_nalogDom_menu(query, context)
         else:
             send_and_pin_menu(query, context)
+        return
 
-    elif query.data == "set_date":
+    if query.data == "set_date":
         context.user_data["awaiting"] = "Date"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="Viernes, 1 de diciembre de 2025 a las 06:26 hs")],
@@ -212,8 +233,9 @@ def button(update, context):
             track_message(context, edited.message_id)
         except Exception:
             pass
+        return
 
-    elif query.data == "set_sum":
+    if query.data == "set_sum":
         context.user_data["awaiting"] = "Sum"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="$ 4.778.223")],
@@ -230,8 +252,9 @@ def button(update, context):
             track_message(context, edited.message_id)
         except Exception:
             pass
+        return
 
-    elif query.data == "set_client":
+    if query.data == "set_client":
         context.user_data["awaiting"] = "clientName"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="José Alberto González Contreras")],
@@ -248,9 +271,10 @@ def button(update, context):
             track_message(context, edited.message_id)
         except Exception:
             pass
+        return
 
     # nalogDom specific callbacks
-    elif query.data == "nalog_set_name":
+    if query.data == "nalog_set_name":
         context.user_data["awaiting"] = "clientName"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="Ana Virginia Mamani Bernal")],
@@ -267,8 +291,9 @@ def button(update, context):
             track_message(context, edited.message_id)
         except Exception:
             pass
+        return
 
-    elif query.data == "nalog_set_id":
+    if query.data == "nalog_set_id":
         context.user_data["awaiting"] = "numCuenta"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="9843893")],
@@ -285,8 +310,9 @@ def button(update, context):
             track_message(context, edited.message_id)
         except Exception:
             pass
+        return
 
-    elif query.data == "nalog_set_amount":
+    if query.data == "nalog_set_amount":
         context.user_data["awaiting"] = "amount"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="85,349.60 DOP")],
@@ -303,8 +329,9 @@ def button(update, context):
             track_message(context, edited.message_id)
         except Exception:
             pass
+        return
 
-    elif query.data == "nalog_set_tax":
+    if query.data == "nalog_set_tax":
         context.user_data["awaiting"] = "depAmount"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="1,349 DOP")],
@@ -321,13 +348,16 @@ def button(update, context):
             track_message(context, edited.message_id)
         except Exception:
             pass
+        return
 
-    elif query.data == "generate_png":
+    if query.data == "generate_png":
         generate_png(update, context)
+        return
 
-    elif query.data == "back_menu":
+    if query.data == "back_menu":
         context.user_data["awaiting"] = None
         send_and_pin_menu(query, context)
+        return
 
 def handle_message(update, context):
     chat_id = update.message.chat_id
@@ -340,16 +370,26 @@ def handle_message(update, context):
         context.user_data["awaiting"] = None
         saved = update.message.reply_text(f"✅ Слой {awaiting} обновлён.")
         track_message(context, saved.message_id)
-        menu_msg = send_and_pin_menu(update, context)
-        preserve = {menu_msg.message_id, saved.message_id, update.message.message_id}
+
+        # Возвращаем в меню, соответствующее текущему выбранному PSD
+        menu_msg = show_menu_for_current_psd(update, context)
+        # Сохраняем и очищаем старые сообщения, сохраняя важные
+        preserve = {saved.message_id}
+        if menu_msg:
+            preserve.add(menu_msg.message_id)
+        preserve.add(update.message.message_id)
         cleanup_messages(context, chat_id, preserve)
         return
 
+    # Если нет режима ожидания — считаем ввод датой
     context.user_data["Date"] = text
     saved = update.message.reply_text("🗓 Дата обновлена.")
     track_message(context, saved.message_id)
-    menu_msg = send_and_pin_menu(update, context)
-    preserve = {menu_msg.message_id, saved.message_id, update.message.message_id}
+    menu_msg = show_menu_for_current_psd(update, context)
+    preserve = {saved.message_id}
+    if menu_msg:
+        preserve.add(menu_msg.message_id)
+    preserve.add(update.message.message_id)
     cleanup_messages(context, chat_id, preserve)
 
 def generate_png(update, context):
@@ -360,7 +400,6 @@ def generate_png(update, context):
         chat_id = update.message.chat_id
         origin_message_id = update.message.message_id
 
-    # Prepare sanitized inputs
     date_val = sanitize_input(context.user_data.get("Date", ""))
     sum_val = sanitize_input(context.user_data.get("Sum", ""))
     name_val = sanitize_input(context.user_data.get("clientName", ""))
@@ -368,9 +407,8 @@ def generate_png(update, context):
     dep_amount_val = sanitize_input(context.user_data.get("depAmount", ""))
     amount_val = sanitize_input(context.user_data.get("amount", ""))
 
-    psd_key = context.user_data.get("psd", "arsInvest")  # default arsInvest
+    psd_key = context.user_data.get("psd", "arsInvest")
 
-    # Default fonts
     fonts = {
         "clientName": "assets/SFPRODISPLAYBOLD.OTF",
         "Sum": "assets/SFPRODISPLAYBOLD.OTF",
@@ -378,7 +416,6 @@ def generate_png(update, context):
         "default": "assets/SFPRODISPLAYREGULAR.OTF",
     }
 
-    # If nalogDom selected, use SF Pro Display Medium for its fields
     if psd_key == "nalogDom":
         fonts.update({
             "clientName": "assets/SFPRODISPLAYMEDIUM.OTF",
@@ -388,10 +425,8 @@ def generate_png(update, context):
             "default": "assets/SFPRODISPLAYMEDIUM.OTF",
         })
 
-    # Color for nalogDom: hex 2c2c2c -> RGB (44,44,44)
     text_color = (44, 44, 44, 255)
 
-    # Positions, sizes and widths per PSD
     if psd_key == "arsInvest":
         psd_path = "assets/arsInvest.psd"
         positions = {
@@ -418,21 +453,19 @@ def generate_png(update, context):
 
     elif psd_key == "nalogDom":
         psd_path = "assets/nalogDom.psd"
-        # Provided precise sizes and coordinates (converted from the user's values)
-        # All text layers use 9.26 pt in Photoshop -> convert to px at 96 dpi
-        base_pt = 9.26
-        base_px = pt_to_px(base_pt)
 
-        # Coordinates and widths (user provided values interpreted as floats)
+        # Используем DPI, который вы указали ранее (пример: 124.472)
+        dpi_for_conversion = 124.472
+        base_pt = 9.26
+        base_px = pt_to_px(base_pt, dpi=dpi_for_conversion)
+
         positions = {
-            # x, y as provided (pixels)
             "clientName": (700.63, 324.54),
             "numCuenta": (700.63, 366.54),
             "depAmount": (696.63, 411.82),
             "amount": (700.63, 454.59),
         }
 
-        # Widths (user provided "ш" values interpreted as pixel widths)
         widths_px = {
             "clientName": 88.53,
             "numCuenta": 68.82,
@@ -474,7 +507,9 @@ def generate_png(update, context):
     track_message(context, sent.message_id)
     context.user_data["last_png_message_id"] = sent.message_id
 
-    menu_msg = send_and_pin_menu(update.callback_query if hasattr(update, "callback_query") and update.callback_query else update, context)
+    # После отправки возвращаем соответствующее меню
+    menu_msg = show_menu_for_current_psd(update.callback_query if hasattr(update, "callback_query") and update.callback_query else update, context)
+
     preserve = {sent.message_id}
     if menu_msg:
         preserve.add(menu_msg.message_id)
