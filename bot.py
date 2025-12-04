@@ -469,23 +469,23 @@ def generate_png(update, context):
         base_pt = 9.26
         base_px = pt_to_px(base_pt, dpi=dpi_for_conversion)
 
-        # Updated coordinates and widths (clientName enlarged and lines slightly higher)
+        # Final refined coordinates and widths (adjusted to match screenshot 1)
         positions = {
-            "clientName": (699.63, 322.54),   # user provided new clientName coords
-            "numCuenta": (700.63, 362.54),    # moved slightly higher
-            "depAmount": (696.63, 407.82),    # moved slightly higher
-            "amount": (700.63, 450.59),       # moved slightly higher
+            "clientName": (699.63, 322.54),   # refined per user
+            "numCuenta": (699.63, 362.54),    # slightly higher than previous export
+            "depAmount": (696.63, 407.82),    # slightly higher
+            "amount": (699.63, 448.59),       # slightly higher
         }
 
         widths_px = {
-            "clientName": 181.50,   # enlarged width to avoid over-scaling down
+            "clientName": 181.50,   # widened to keep font from scaling down too much
             "numCuenta": 68.82,
             "depAmount": 79.36,
             "amount": 112.18,
         }
 
         sizes_px = {
-            # keep uniform base size for all nalogDom fields (converted from 9.26pt @ given DPI)
+            # uniform base size for all nalogDom fields (converted from 9.26pt @ given DPI)
             "clientName": base_px,
             "numCuenta": base_px,
             "depAmount": base_px,
