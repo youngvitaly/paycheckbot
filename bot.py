@@ -62,7 +62,6 @@ def fit_text_to_width(draw, text, font_path, base_size_px, target_width_px):
 def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=(0,0,0,255)):
     psd = PSDImage.open(psd_path)
 
-    # Hide original text layers that will be replaced (if present)
     for layer in psd.descendants():
         if layer.kind == "type" and layer.name in replacements:
             layer.visible = False
@@ -88,7 +87,7 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_p
     base.save(outputs["png"])
     return outputs["png"]
 
-# --- Message tracking and cleanup ---
+# Message tracking and cleanup
 
 def track_message(context, msg_id):
     msgs = context.user_data.get("msg_ids", set())
@@ -106,7 +105,7 @@ def cleanup_messages(context, chat_id, preserve_ids):
         msgs.discard(mid)
     context.user_data["msg_ids"] = msgs
 
-# --- Menus helpers ---
+# Menus
 
 def send_and_pin_menu(update_or_query, context):
     keyboard = [
@@ -173,7 +172,7 @@ def show_menu_for_current_psd(update_or_query, context):
     else:
         return send_and_pin_menu(update_or_query, context)
 
-# --- Telegram Handlers and logic ---
+# Handlers
 
 def start(update, context):
     welcome = update.message.reply_text("✨ Все данные генерируются рандомно.")
@@ -270,7 +269,7 @@ def button(update, context):
             pass
         return
 
-    # nalogDom specific callbacks
+    # nalogDom callbacks
     if query.data == "nalog_set_name":
         context.user_data["awaiting"] = "clientName"
         keyboard = [
@@ -461,11 +460,12 @@ def generate_png(update, context):
         base_pt = 9.26
         base_px = pt_to_px(base_pt, dpi=dpi_for_conversion)
 
+        # Final coordinates provided by user (X aligned, Y differ)
         positions = {
-            "clientName": (699.63, 320.54),
-            "numCuenta": (699.63, 360.54),
-            "depAmount": (694.63, 405.82),
-            "amount": (697.63, 446.59),
+            "clientName": (699.63, 322.54),
+            "numCuenta": (699.63, 365.54),
+            "depAmount": (696.63, 411.82),
+            "amount": (698.63, 454.59),
         }
 
         widths_px = {
