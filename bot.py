@@ -463,7 +463,7 @@ def generate_png(update, context):
         # Final coordinates provided by user (X aligned, Y differ)
         positions = {
             "clientName": (699.63, 322.54),
-            "numCuenta": (699.63, 365.54),
+            "numCuenta": (699.63, 368.54),
             "depAmount": (696.63, 411.82),
             "amount": (698.63, 454.59),
         }
