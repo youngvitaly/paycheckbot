@@ -62,6 +62,7 @@ def fit_text_to_width(draw, text, font_path, base_size_px, target_width_px):
 def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=(0,0,0,255)):
     psd = PSDImage.open(psd_path)
 
+    # Hide original text layers that will be replaced (if present)
     for layer in psd.descendants():
         if layer.kind == "type" and layer.name in replacements:
             layer.visible = False
@@ -145,7 +146,8 @@ def show_nalogDom_menu(update_or_query, context):
         [InlineKeyboardButton("🆔 Настроить ID", callback_data="nalog_set_id")],
         [InlineKeyboardButton("💸 Настроить Вывод", callback_data="nalog_set_amount")],
         [InlineKeyboardButton("🏷️ Настроить Налог", callback_data="nalog_set_tax")],
-        [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
+        [InlineKeyboardButton("📤 Экспорт PNG", callback_data="nalog_export_png")],
+        [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -202,14 +204,12 @@ def button(update, context):
 
     if query.data.startswith("psd_"):
         context.user_data["psd"] = query.data.replace("psd_", "")
-        # show confirmation and then appropriate menu
         try:
             edited = query.edit_message_text(f"✅ Выбран PSD: {context.user_data['psd']}")
             track_message(context, edited.message_id)
         except Exception:
             pass
 
-        # If nalogDom selected — show its submenu
         if context.user_data["psd"] == "nalogDom":
             show_nalogDom_menu(query, context)
         else:
@@ -278,7 +278,7 @@ def button(update, context):
         context.user_data["awaiting"] = "clientName"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="Ana Virginia Mamani Bernal")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="psd_nalogDom")]
+            [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
@@ -297,7 +297,7 @@ def button(update, context):
         context.user_data["awaiting"] = "numCuenta"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="9843893")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="psd_nalogDom")]
+            [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
@@ -316,7 +316,7 @@ def button(update, context):
         context.user_data["awaiting"] = "amount"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="85,349.60 DOP")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="psd_nalogDom")]
+            [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
@@ -335,7 +335,7 @@ def button(update, context):
         context.user_data["awaiting"] = "depAmount"
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="1,349 DOP")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="psd_nalogDom")]
+            [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
@@ -348,6 +348,16 @@ def button(update, context):
             track_message(context, edited.message_id)
         except Exception:
             pass
+        return
+
+    if query.data == "nalog_export_png":
+        # экспорт прямо из меню nalogDom
+        generate_png(update, context)
+        return
+
+    if query.data == "back_to_main":
+        context.user_data["awaiting"] = None
+        send_and_pin_menu(query, context)
         return
 
     if query.data == "generate_png":
@@ -454,26 +464,28 @@ def generate_png(update, context):
     elif psd_key == "nalogDom":
         psd_path = "assets/nalogDom.psd"
 
-        # Используем DPI, который вы указали ранее (пример: 124.472)
+        # Use provided DPI for pt->px conversion (user indicated ~124.472)
         dpi_for_conversion = 124.472
         base_pt = 9.26
         base_px = pt_to_px(base_pt, dpi=dpi_for_conversion)
 
+        # Updated coordinates and widths (clientName enlarged and lines slightly higher)
         positions = {
-            "clientName": (700.63, 324.54),
-            "numCuenta": (700.63, 366.54),
-            "depAmount": (696.63, 411.82),
-            "amount": (700.63, 454.59),
+            "clientName": (699.63, 322.54),   # user provided new clientName coords
+            "numCuenta": (700.63, 362.54),    # moved slightly higher
+            "depAmount": (696.63, 407.82),    # moved slightly higher
+            "amount": (700.63, 450.59),       # moved slightly higher
         }
 
         widths_px = {
-            "clientName": 88.53,
+            "clientName": 181.50,   # enlarged width to avoid over-scaling down
             "numCuenta": 68.82,
             "depAmount": 79.36,
             "amount": 112.18,
         }
 
         sizes_px = {
+            # keep uniform base size for all nalogDom fields (converted from 9.26pt @ given DPI)
             "clientName": base_px,
             "numCuenta": base_px,
             "depAmount": base_px,
