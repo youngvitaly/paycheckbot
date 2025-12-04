@@ -48,20 +48,14 @@ def sanitize_input(text: str) -> str:
 def pt_to_px(pt: float, dpi: float = 96.0) -> int:
     return int(round(pt * dpi / 72.0))
 
-def fit_text_to_width(draw, text, font_path, base_size_px, target_width_px):
-    size = int(base_size_px)
-    font = ImageFont.truetype(font_path, size)
-    tb = draw.textbbox((0, 0), text, font=font)
-    tw = tb[2] - tb[0]
-    if target_width_px and tw > target_width_px:
-        scale = target_width_px / tw
-        size = max(1, int(size * scale))
-        font = ImageFont.truetype(font_path, size)
-    return font
-
 def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=(0,0,0,255)):
+    """
+    Рендерит PSD в PNG, заменяя текстовые слои на заданные строки.
+    В этой версии шрифт для каждого поля фиксирован: не масштабируется и не усекается.
+    """
     psd = PSDImage.open(psd_path)
 
+    # Скрываем оригинальные текстовые слои, которые будем заменять
     for layer in psd.descendants():
         if layer.kind == "type" and layer.name in replacements:
             layer.visible = False
@@ -74,20 +68,18 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_p
             x, y = positions[name]
             font_path = fonts.get(name, fonts.get("default"))
             base_size = sizes_px.get(name, sizes_px.get("default", 24))
-            target_width = widths_px.get(name, None)
 
-            if target_width:
-                font = fit_text_to_width(draw, text, font_path, base_size, target_width)
-            else:
-                font = ImageFont.truetype(font_path, int(base_size))
+            # Фиксированный шрифт — всегда один и тот же размер
+            font = ImageFont.truetype(font_path, int(base_size))
 
+            # Рисуем текст в одну строку; не масштабируем и не усекаем
             draw.text((x, y), text, font=font, fill=color)
 
     os.makedirs(os.path.dirname(outputs["png"]), exist_ok=True)
     base.save(outputs["png"])
     return outputs["png"]
 
-# Message tracking and cleanup
+# --- Message tracking and cleanup ---
 
 def track_message(context, msg_id):
     msgs = context.user_data.get("msg_ids", set())
@@ -105,7 +97,7 @@ def cleanup_messages(context, chat_id, preserve_ids):
         msgs.discard(mid)
     context.user_data["msg_ids"] = msgs
 
-# Menus
+# --- Menus helpers ---
 
 def send_and_pin_menu(update_or_query, context):
     keyboard = [
@@ -172,7 +164,7 @@ def show_menu_for_current_psd(update_or_query, context):
     else:
         return send_and_pin_menu(update_or_query, context)
 
-# Handlers
+# --- Telegram Handlers and logic ---
 
 def start(update, context):
     welcome = update.message.reply_text("✨ Все данные генерируются рандомно.")
@@ -269,7 +261,7 @@ def button(update, context):
             pass
         return
 
-    # nalogDom callbacks
+    # nalogDom specific callbacks
     if query.data == "nalog_set_name":
         context.user_data["awaiting"] = "clientName"
         keyboard = [
@@ -460,7 +452,7 @@ def generate_png(update, context):
         base_pt = 9.26
         base_px = pt_to_px(base_pt, dpi=dpi_for_conversion)
 
-        # Final coordinates provided by user (X aligned, Y differ)
+        # Точные координаты, которые ты подтвердил (X выровнены, Y разные)
         positions = {
             "clientName": (699.63, 322.54),
             "numCuenta": (699.63, 366.00),
