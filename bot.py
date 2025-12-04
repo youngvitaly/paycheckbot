@@ -51,7 +51,7 @@ def pt_to_px(pt: float, dpi: float = 96.0) -> int:
 def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=(0,0,0,255)):
     """
     Рендерит PSD в PNG, заменяя текстовые слои на заданные строки.
-    В этой версии шрифт для каждого поля фиксирован: не масштабируется и не усекается.
+    Шрифт фиксированного размера (не масштабируется).
     """
     psd = PSDImage.open(psd_path)
 
@@ -131,7 +131,20 @@ def send_and_pin_menu(update_or_query, context):
     context.user_data["menu_message_id"] = msg.message_id
     return msg
 
-def show_nalogDom_menu(update_or_query, context):
+def show_nalog_menu(update_or_query, context):
+    """
+    Универсальное меню для nalogDom и nalogMex.
+    Примеры в кнопках зависят от выбранного PSD (context.user_data['psd']).
+    """
+    psd = context.user_data.get("psd", "nalogDom")
+    # Примеры по PSD
+    if psd == "nalogMex":
+        example_amount = "85,349.60 MXN"
+        example_tax = "1,349 MXN"
+    else:
+        example_amount = "85,349.60 DOP"
+        example_tax = "1,349 DOP"
+
     keyboard = [
         [InlineKeyboardButton("👤 Настроить Имя", callback_data="nalog_set_name")],
         [InlineKeyboardButton("🆔 Настроить ID", callback_data="nalog_set_id")],
@@ -142,16 +155,17 @@ def show_nalogDom_menu(update_or_query, context):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    # Редактируем исходное сообщение, если есть callback_query
     if hasattr(update_or_query, "callback_query") and update_or_query.callback_query:
         try:
-            edited = update_or_query.callback_query.edit_message_text("📂 Настройки nalogDom.psd:", reply_markup=reply_markup)
+            edited = update_or_query.callback_query.edit_message_text("📂 Настройки " + psd + ".psd:", reply_markup=reply_markup)
             track_message(context, edited.message_id)
             return edited
         except Exception:
             pass
 
     if hasattr(update_or_query, "message") and update_or_query.message:
-        msg = context.bot.send_message(chat_id=update_or_query.message.chat_id, text="📂 Настройки nalogDom.psd:", reply_markup=reply_markup)
+        msg = context.bot.send_message(chat_id=update_or_query.message.chat_id, text="📂 Настройки " + psd + ".psd:", reply_markup=reply_markup)
         track_message(context, msg.message_id)
         return msg
 
@@ -159,8 +173,8 @@ def show_nalogDom_menu(update_or_query, context):
 
 def show_menu_for_current_psd(update_or_query, context):
     psd = context.user_data.get("psd")
-    if psd == "nalogDom":
-        return show_nalogDom_menu(update_or_query, context)
+    if psd in ("nalogDom", "nalogMex"):
+        return show_nalog_menu(update_or_query, context)
     else:
         return send_and_pin_menu(update_or_query, context)
 
@@ -179,6 +193,7 @@ def button(update, context):
         keyboard = [
             [InlineKeyboardButton("🖼 arsInvest.psd", callback_data="psd_arsInvest")],
             [InlineKeyboardButton("🏠 nalogDom.psd", callback_data="psd_nalogDom")],
+            [InlineKeyboardButton("🇲🇽 nalogMex.psd", callback_data="psd_nalogMex")],
             [InlineKeyboardButton("📑 invoice.psd", callback_data="psd_invoice")],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
@@ -198,8 +213,9 @@ def button(update, context):
         except Exception:
             pass
 
-        if context.user_data["psd"] == "nalogDom":
-            show_nalogDom_menu(query, context)
+        # Если выбран nalogDom или nalogMex — показать соответствующее меню
+        if context.user_data["psd"] in ("nalogDom", "nalogMex"):
+            show_nalog_menu(query, context)
         else:
             send_and_pin_menu(query, context)
         return
@@ -261,19 +277,22 @@ def button(update, context):
             pass
         return
 
-    # nalogDom specific callbacks
+    # nalog callbacks (shared for nalogDom and nalogMex)
     if query.data == "nalog_set_name":
         context.user_data["awaiting"] = "clientName"
+        # пример зависит от выбранного PSD
+        psd = context.user_data.get("psd", "nalogDom")
+        example = "Ana Virginia Mamani Bernal"
         keyboard = [
-            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="Ana Virginia Mamani Bernal")],
+            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat=example)],
             [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
                 "👤 Введите имя (clientName):\n"
-                'к примеру "Ana Virginia Mamani Bernal"\n\n'
-                "⬅️ Или вернитесь в настройки nalogDom",
+                f'к примеру "{example}"\n\n'
+                "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
             )
             track_message(context, edited.message_id)
@@ -283,16 +302,17 @@ def button(update, context):
 
     if query.data == "nalog_set_id":
         context.user_data["awaiting"] = "numCuenta"
+        example = "9843893"
         keyboard = [
-            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="9843893")],
+            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat=example)],
             [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
                 "🔢 Введите ID (numCuenta):\n"
-                'к примеру "9843893"\n\n'
-                "⬅️ Или вернитесь в настройки nalogDom",
+                f'к примеру "{example}"\n\n'
+                "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
             )
             track_message(context, edited.message_id)
@@ -302,16 +322,18 @@ def button(update, context):
 
     if query.data == "nalog_set_amount":
         context.user_data["awaiting"] = "amount"
+        psd = context.user_data.get("psd", "nalogDom")
+        example_amount = "85,349.60 MXN" if psd == "nalogMex" else "85,349.60 DOP"
         keyboard = [
-            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="85,349.60 DOP")],
+            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat=example_amount)],
             [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
                 "💸 Введите Вывод (amount):\n"
-                'к примеру "85,349.60 DOP"\n\n'
-                "⬅️ Или вернитесь в настройки nalogDom",
+                f'к примеру "{example_amount}"\n\n'
+                "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
             )
             track_message(context, edited.message_id)
@@ -321,16 +343,18 @@ def button(update, context):
 
     if query.data == "nalog_set_tax":
         context.user_data["awaiting"] = "depAmount"
+        psd = context.user_data.get("psd", "nalogDom")
+        example_tax = "1,349 MXN" if psd == "nalogMex" else "1,349 DOP"
         keyboard = [
-            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="1,349 DOP")],
+            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat=example_tax)],
             [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
                 "🏷 Введите Налог (depAmount):\n"
-                'к примеру "1,349 DOP"\n\n'
-                "⬅️ Или вернитесь в настройки nalogDom",
+                f'к примеру "{example_tax}"\n\n'
+                "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
             )
             track_message(context, edited.message_id)
@@ -410,7 +434,7 @@ def generate_png(update, context):
         "default": "assets/SFPRODISPLAYREGULAR.OTF",
     }
 
-    if psd_key == "nalogDom":
+    if psd_key in ("nalogDom", "nalogMex"):
         fonts.update({
             "clientName": "assets/SFPRODISPLAYMEDIUM.OTF",
             "amount": "assets/SFPRODISPLAYMEDIUM.OTF",
@@ -445,8 +469,9 @@ def generate_png(update, context):
             "clientName": name_val if name_val else random_latam_name(),
         }
 
-    elif psd_key == "nalogDom":
-        psd_path = "assets/nalogDom.psd"
+    elif psd_key in ("nalogDom", "nalogMex"):
+        # Both PSDs share coordinates and sizes; only default examples differ
+        psd_path = f"assets/{psd_key}.psd"
 
         dpi_for_conversion = 124.472
         base_pt = 9.26
@@ -475,11 +500,19 @@ def generate_png(update, context):
             "default": base_px,
         }
 
+        # Default examples differ by PSD
+        if psd_key == "nalogMex":
+            default_amount = "85,349.60 MXN"
+            default_dep = "1,349 MXN"
+        else:
+            default_amount = "85,349.60 DOP"
+            default_dep = "1,349 DOP"
+
         replacements = {
             "clientName": name_val if name_val else "Ana Virginia Mamani Bernal",
-            "amount": amount_val if amount_val else "85,349.60 DOP",
+            "amount": amount_val if amount_val else default_amount,
             "numCuenta": num_cuenta_val if num_cuenta_val else "9843893",
-            "depAmount": dep_amount_val if dep_amount_val else "1,349 DOP",
+            "depAmount": dep_amount_val if dep_amount_val else default_dep,
         }
 
     else:
