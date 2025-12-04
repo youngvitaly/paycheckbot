@@ -151,7 +151,6 @@ def show_nalogDom_menu(update_or_query, context):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # If called from callback query, edit that message; otherwise send new
     if hasattr(update_or_query, "callback_query") and update_or_query.callback_query:
         try:
             edited = update_or_query.callback_query.edit_message_text("📂 Настройки nalogDom.psd:", reply_markup=reply_markup)
@@ -165,7 +164,6 @@ def show_nalogDom_menu(update_or_query, context):
         track_message(context, msg.message_id)
         return msg
 
-    # fallback
     return None
 
 def show_menu_for_current_psd(update_or_query, context):
@@ -185,7 +183,6 @@ def start(update, context):
 def button(update, context):
     query = update.callback_query
     query.answer()
-    chat_id = query.message.chat_id
 
     if query.data == "choose_psd":
         keyboard = [
@@ -351,7 +348,6 @@ def button(update, context):
         return
 
     if query.data == "nalog_export_png":
-        # экспорт прямо из меню nalogDom
         generate_png(update, context)
         return
 
@@ -381,9 +377,7 @@ def handle_message(update, context):
         saved = update.message.reply_text(f"✅ Слой {awaiting} обновлён.")
         track_message(context, saved.message_id)
 
-        # Возвращаем в меню, соответствующее текущему выбранному PSD
         menu_msg = show_menu_for_current_psd(update, context)
-        # Сохраняем и очищаем старые сообщения, сохраняя важные
         preserve = {saved.message_id}
         if menu_msg:
             preserve.add(menu_msg.message_id)
@@ -391,7 +385,6 @@ def handle_message(update, context):
         cleanup_messages(context, chat_id, preserve)
         return
 
-    # Если нет режима ожидания — считаем ввод датой
     context.user_data["Date"] = text
     saved = update.message.reply_text("🗓 Дата обновлена.")
     track_message(context, saved.message_id)
@@ -464,28 +457,25 @@ def generate_png(update, context):
     elif psd_key == "nalogDom":
         psd_path = "assets/nalogDom.psd"
 
-        # Use provided DPI for pt->px conversion (user indicated ~124.472)
         dpi_for_conversion = 124.472
         base_pt = 9.26
         base_px = pt_to_px(base_pt, dpi=dpi_for_conversion)
 
-        # Final refined coordinates and widths (adjusted to match screenshot 1)
         positions = {
-            "clientName": (699.63, 322.54),   # refined per user
-            "numCuenta": (699.63, 362.54),    # slightly higher than previous export
-            "depAmount": (696.63, 407.82),    # slightly higher
-            "amount": (699.63, 448.59),       # slightly higher
+            "clientName": (699.63, 320.54),
+            "numCuenta": (699.63, 360.54),
+            "depAmount": (694.63, 405.82),
+            "amount": (697.63, 446.59),
         }
 
         widths_px = {
-            "clientName": 181.50,   # widened to keep font from scaling down too much
+            "clientName": 181.50,
             "numCuenta": 68.82,
             "depAmount": 79.36,
             "amount": 112.18,
         }
 
         sizes_px = {
-            # uniform base size for all nalogDom fields (converted from 9.26pt @ given DPI)
             "clientName": base_px,
             "numCuenta": base_px,
             "depAmount": base_px,
@@ -519,7 +509,6 @@ def generate_png(update, context):
     track_message(context, sent.message_id)
     context.user_data["last_png_message_id"] = sent.message_id
 
-    # После отправки возвращаем соответствующее меню
     menu_msg = show_menu_for_current_psd(update.callback_query if hasattr(update, "callback_query") and update.callback_query else update, context)
 
     preserve = {sent.message_id}
