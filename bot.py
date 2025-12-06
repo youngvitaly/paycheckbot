@@ -10,31 +10,46 @@ from telegram.ext import Updater, MessageHandler, Filters, CommandHandler, Callb
 
 load_dotenv()
 
-LATAM_NAMES = [
-    "José Alberto González Contreras",
-    "María Fernanda López Ramírez",
-    "Carlos Eduardo Pérez Díaz",
-    "Ana Sofía Rodríguez Martínez",
-    "Juan Manuel Torres Castillo",
-    "Lucía Valentina Herrera Gómez",
-    "Miguel Ángel Sánchez Vargas",
-    "Camila Alejandra Morales Ríos",
-    "Diego Andrés Fernández Cruz",
-    "Paola Andrea Ramírez Ortega"
+# --- Expanded LATAM name generator (combinatorial) ---
+FIRSTS = [
+    "Ana", "María", "José", "Juan", "Luis", "Carlos", "Lucía", "Miguel",
+    "Diego", "Camila", "Paola", "Sofía", "Valentina", "Andrés", "Daniel",
+    "Alejandro", "Fernando", "Ricardo", "Gabriela", "Isabel", "Raúl",
+    "Mariana", "Patricia", "Roberto", "Héctor", "Adriana"
 ]
 
-# Mapping layer keys -> human labels (for confirmation messages and menu)
-HUMAN_LABELS = {
-    "clientName": "Имя",
-    "numCuenta": "ID",
-    "amount": "Вывод",
-    "depAmount": "Налог",
-    "Date": "Дата",
-    "Sum": "Сумма"
-}
+MIDDLES = [
+    "Alberto", "Fernanda", "Eduardo", "Sofía", "Valentina", "Manuel",
+    "Andrés", "Alejandra", "Martín", "Ignacio", "Esteban", "Victoria",
+    "Emilio", "Camilo", "Lorena", "Beatriz", "Javier", "Pablo"
+]
+
+LASTS = [
+    "González", "Rodríguez", "Pérez", "Martínez", "Sánchez", "Ramírez",
+    "Hernández", "Gómez", "Díaz", "Torres", "Castillo", "Herrera",
+    "Vargas", "Morales", "Fernández", "Ortiz", "Ramos", "Cruz", "Mamani",
+    "Bernal", "López", "Contreras", "Gutiérrez", "Ruiz", "Flores"
+]
 
 def random_latam_name():
-    return random.choice(LATAM_NAMES)
+    """
+    Generate many realistic Latin American name variations by combining
+    first, middle and two last names randomly. This yields thousands of combos.
+    """
+    first = random.choice(FIRSTS)
+    # 50% chance to include a middle name
+    middle = random.choice(MIDDLES) if random.random() < 0.5 else None
+    last1 = random.choice(LASTS)
+    last2 = random.choice(LASTS)
+    # avoid identical last names in rare case
+    if last2 == last1:
+        last2 = random.choice([l for l in LASTS if l != last1])
+    parts = [first]
+    if middle:
+        parts.append(middle)
+    parts.append(last1)
+    parts.append(last2)
+    return " ".join(parts)
 
 def random_sum():
     return f"$ {random.randint(4500000, 5500000):,}".replace(",", ".")
@@ -55,17 +70,57 @@ def sanitize_input(text: str) -> str:
     cleaned = re.sub(r'^\s*@\S+\s+', '', text)
     return cleaned.strip()
 
+def parse_user_date(text: str) -> str:
+    """
+    Accepts user-friendly date/time like:
+      - "01.12.2025,06:26"
+      - "1.12.2025,6:26"
+      - "01.12.2025 06:26"
+      - "2025-12-01,06:26" (fallback)
+    Converts to Spanish format: "Viernes, 1 de diciembre de 2025 a las 06:26 hs"
+    If parsing fails, returns original text (so user can still use freeform).
+    """
+    if not text:
+        return text
+    text = text.strip()
+    # Try pattern DD.MM.YYYY,HH:MM or DD.MM.YYYY HH:MM
+    m = re.match(r'^\s*(\d{1,2})\.(\d{1,2})\.(\d{4})\s*[,\s]\s*(\d{1,2}):(\d{2})\s*$', text)
+    if m:
+        d, mo, y, hh, mm = m.groups()
+        try:
+            dt = datetime(int(y), int(mo), int(d), int(hh), int(mm))
+            dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                     "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+            dia_semana = dias[dt.weekday()]
+            mes_nombre = meses[dt.month - 1]
+            return f"{dia_semana}, {dt.day} de {mes_nombre} de {dt.year} a las {dt.strftime('%H:%M')} hs"
+        except Exception:
+            return text
+    # Try ISO-like YYYY-MM-DD,HH:MM
+    m2 = re.match(r'^\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*[,\s]\s*(\d{1,2}):(\d{2})\s*$', text)
+    if m2:
+        y, mo, d, hh, mm = m2.groups()
+        try:
+            dt = datetime(int(y), int(mo), int(d), int(hh), int(mm))
+            dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                     "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+            dia_semana = dias[dt.weekday()]
+            mes_nombre = meses[dt.month - 1]
+            return f"{dia_semana}, {dt.day} de {mes_nombre} de {dt.year} a las {dt.strftime('%H:%M')} hs"
+        except Exception:
+            return text
+    # If nothing matched, return original text
+    return text
+
 def pt_to_px(pt: float, dpi: float = 96.0) -> int:
     return int(round(pt * dpi / 72.0))
 
 def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=(0,0,0,255)):
-    """
-    Рендерит PSD в PNG, заменяя текстовые слои на заданные строки.
-    Шрифт фиксированного размера (не масштабируется).
-    """
     psd = PSDImage.open(psd_path)
 
-    # Скрываем оригинальные текстовые слои, которые будем заменять
+    # Hide original text layers that we will replace (if present)
     for layer in psd.descendants():
         if layer.kind == "type" and layer.name in replacements:
             layer.visible = False
@@ -79,10 +134,8 @@ def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_p
             font_path = fonts.get(name, fonts.get("default"))
             base_size = sizes_px.get(name, sizes_px.get("default", 24))
 
-            # Фиксированный шрифт — всегда один и тот же размер
+            # Fixed font size (do not scale)
             font = ImageFont.truetype(font_path, int(base_size))
-
-            # Рисуем текст в одну строку; не масштабируем и не усекаем
             draw.text((x, y), text, font=font, fill=color)
 
     os.makedirs(os.path.dirname(outputs["png"]), exist_ok=True)
@@ -107,20 +160,27 @@ def cleanup_messages(context, chat_id, preserve_ids):
         msgs.discard(mid)
     context.user_data["msg_ids"] = msgs
 
-# --- Helpers for per-PSD storage ---
+# --- Human labels and per-PSD storage helpers ---
+
+HUMAN_LABELS = {
+    "clientName": "Имя",
+    "numCuenta": "ID",
+    "amount": "Вывод",
+    "depAmount": "Налог",
+    "Date": "Дата",
+    "Sum": "Сумма"
+}
 
 def _psd_key(psd_name: str, field: str) -> str:
-    """Возвращает ключ для хранения значения field для конкретного PSD."""
     return f"{psd_name}_{field}"
 
 def _get_field(context, field: str, psd: str, default=None):
-    """Получить значение поля для PSD, если нет — вернуть default."""
     return context.user_data.get(_psd_key(psd, field), default)
 
 def _set_field(context, field: str, psd: str, value: str):
     context.user_data[_psd_key(psd, field)] = value
 
-# --- Menus helpers ---
+# --- Menus and handlers (kept consistent with previous behavior) ---
 
 def send_and_pin_menu(update_or_query, context):
     keyboard = [
@@ -138,10 +198,10 @@ def send_and_pin_menu(update_or_query, context):
         chat_id = update_or_query.message.chat_id
 
     try:
-        msg = context.bot.send_message(chat_id=chat_id, text="📋 Главное меню (закреплено):", reply_markup=reply_markup)
+        msg = context.bot.send_message(chat_id=chat_id, text="✨ Добро пожаловать!", reply_markup=reply_markup)
     except Exception:
         try:
-            msg = update_or_query.edit_message_text("📋 Главное меню (закреплено):", reply_markup=reply_markup)
+            msg = update_or_query.edit_message_text("✨ Добро пожаловать!", reply_markup=reply_markup)
         except Exception:
             return None
 
@@ -158,14 +218,7 @@ def _format_display_value(val, fallback):
     return val if (val is not None and str(val).strip() != "") else fallback
 
 def show_nalog_menu(update_or_query, context):
-    """
-    Универсальное меню для nalogDom и nalogMex.
-    Сверху показывает актуальные значения полей (введённые пользователем или дефолты).
-    Незаполненные поля помечаются как 'ПУСТО'.
-    Кнопки: Имя, ID, Налог, Вывод (налог и вывод поменяны местами).
-    """
     psd = context.user_data.get("psd", "nalogDom")
-    # Примеры по PSD
     if psd == "nalogMex":
         example_amount = "85,349.60 MXN"
         example_tax = "1,349 MXN"
@@ -173,7 +226,6 @@ def show_nalog_menu(update_or_query, context):
         example_amount = "85,349.60 DOP"
         example_tax = "1,349 DOP"
 
-    # Текущие значения (берём из per-PSD ключей)
     client_val = _get_field(context, "clientName", psd, "Ana Virginia Mamani Bernal")
     num_val = _get_field(context, "numCuenta", psd, "9843893")
     dep_val = _get_field(context, "depAmount", psd, None)
@@ -193,7 +245,6 @@ def show_nalog_menu(update_or_query, context):
     ]
     header_text = "\n".join(header_lines)
 
-    # Кнопки: Имя, ID, Налог, Вывод (налог и вывод поменяны местами)
     keyboard = [
         [InlineKeyboardButton("👤 Настроить Имя", callback_data="nalog_set_name")],
         [InlineKeyboardButton("🆔 Настроить ID", callback_data="nalog_set_id")],
@@ -204,7 +255,6 @@ def show_nalog_menu(update_or_query, context):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # Редактируем исходное сообщение, если есть callback_query
     if hasattr(update_or_query, "callback_query") and update_or_query.callback_query:
         try:
             edited = update_or_query.callback_query.edit_message_text(header_text, reply_markup=reply_markup)
@@ -227,10 +277,8 @@ def show_menu_for_current_psd(update_or_query, context):
     else:
         return send_and_pin_menu(update_or_query, context)
 
-# --- Telegram Handlers and logic ---
-
 def start(update, context):
-    welcome = update.message.reply_text("✨ Все данные генерируются рандомно.")
+    welcome = update.message.reply_text("✨ Добро пожаловать!")
     track_message(context, welcome.message_id)
     send_and_pin_menu(update, context)
 
@@ -262,7 +310,6 @@ def button(update, context):
         except Exception:
             pass
 
-        # Если выбран nalogDom или nalogMex — показать соответствующее меню
         if context.user_data["psd"] in ("nalogDom", "nalogMex"):
             show_nalog_menu(query, context)
         else:
@@ -272,14 +319,14 @@ def button(update, context):
     if query.data == "set_date":
         context.user_data["awaiting"] = "Date"
         keyboard = [
-            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="Viernes, 1 de diciembre de 2025 a las 06:26 hs")],
+            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="01.12.2025,06:26")],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
-                "🗓 Введите дату и время:\n"
-                'к примеру "Viernes, 1 de diciembre de 2025 a las 06:26 hs"\n\n'
+                "🗓 Введите дату и время в формате DD.MM.YYYY,HH:MM\n"
+                'например "01.12.2025,06:26"\n\n'
                 "⬅️ Или вернитесь в меню (дата выставится сегодняшняя)",
                 reply_markup=reply_markup
             )
@@ -310,7 +357,7 @@ def button(update, context):
     if query.data == "set_client":
         context.user_data["awaiting"] = "clientName"
         keyboard = [
-            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat="José Alberto González Contreras")],
+            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat=random_latam_name())],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -338,7 +385,7 @@ def button(update, context):
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
-                "👤 Введите имя (Имя):\n"
+                f"👤 Введите {HUMAN_LABELS['clientName']}:\n"
                 f'к примеру "{example}"\n\n'
                 "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
@@ -358,7 +405,7 @@ def button(update, context):
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
-                "🔢 Введите ID (ID):\n"
+                f"🔢 Введите {HUMAN_LABELS['numCuenta']}:\n"
                 f'к примеру "{example}"\n\n'
                 "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
@@ -379,7 +426,7 @@ def button(update, context):
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
-                "🏷 Введите Налог (Налог):\n"
+                f"🏷 Введите {HUMAN_LABELS['depAmount']}:\n"
                 f'к примеру "{example_tax}"\n\n'
                 "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
@@ -400,7 +447,7 @@ def button(update, context):
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
-                "💸 Введите Вывод (Вывод):\n"
+                f"💸 Введите {HUMAN_LABELS['amount']}:\n"
                 f'к примеру "{example_amount}"\n\n'
                 "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
@@ -437,16 +484,42 @@ def handle_message(update, context):
     current_psd = context.user_data.get("psd", "arsInvest")
 
     if awaiting:
-        # Сохраняем введённое значение в user_data под ключом, специфичным для PSD
-        _set_field(context, awaiting, current_psd, text)
+        # Special handling for Date: accept compact format and convert
+        if awaiting == "Date":
+            parsed = parse_user_date(text)
+            # store parsed (if parse_user_date returned original text, still store it)
+            context.user_data["Date"] = parsed if parsed else text
+            context.user_data["awaiting"] = None
+            saved = update.message.reply_text("✅ Дата обновлена.")
+            track_message(context, saved.message_id)
+            menu_msg = show_menu_for_current_psd(update, context)
+            preserve = {saved.message_id}
+            if menu_msg:
+                preserve.add(menu_msg.message_id)
+            preserve.add(update.message.message_id)
+            cleanup_messages(context, chat_id, preserve)
+            return
+
+        # For nalog fields, save per-PSD
+        if awaiting in ("clientName", "numCuenta", "amount", "depAmount"):
+            _set_field(context, awaiting, current_psd, text)
+            context.user_data["awaiting"] = None
+            human = HUMAN_LABELS.get(awaiting, awaiting)
+            saved = update.message.reply_text(f"✅ {human} обновлено.")
+            track_message(context, saved.message_id)
+            menu_msg = show_menu_for_current_psd(update, context)
+            preserve = {saved.message_id}
+            if menu_msg:
+                preserve.add(menu_msg.message_id)
+            preserve.add(update.message.message_id)
+            cleanup_messages(context, chat_id, preserve)
+            return
+
+        # Generic fallback: save to Date
+        context.user_data["Date"] = text
         context.user_data["awaiting"] = None
-
-        # Человекочитаемая метка
-        human = HUMAN_LABELS.get(awaiting, awaiting)
-        saved = update.message.reply_text(f"✅ {human} обновлено.")
+        saved = update.message.reply_text("✅ Введено.")
         track_message(context, saved.message_id)
-
-        # После сохранения возвращаем меню для текущего PSD (nalogDom/nalogMex или главное)
         menu_msg = show_menu_for_current_psd(update, context)
         preserve = {saved.message_id}
         if menu_msg:
@@ -455,8 +528,9 @@ def handle_message(update, context):
         cleanup_messages(context, chat_id, preserve)
         return
 
-    # Если нет режима ожидания — считаем ввод датой
-    context.user_data["Date"] = text
+    # If not awaiting, treat input as Date by default
+    parsed = parse_user_date(text)
+    context.user_data["Date"] = parsed if parsed else text
     saved = update.message.reply_text("🗓 Дата обновлена.")
     track_message(context, saved.message_id)
     menu_msg = show_menu_for_current_psd(update, context)
@@ -529,14 +603,12 @@ def generate_png(update, context):
         }
 
     elif psd_key in ("nalogDom", "nalogMex"):
-        # Both PSDs share coordinates and sizes; only default examples differ
         psd_path = f"assets/{psd_key}.psd"
 
         dpi_for_conversion = 124.472
         base_pt = 9.26
         base_px = pt_to_px(base_pt, dpi=dpi_for_conversion)
 
-        # Точные координаты, которые ты подтвердил (X выровнены, Y разные)
         positions = {
             "clientName": (699.63, 322.54),
             "numCuenta": (699.63, 366.00),
@@ -559,7 +631,6 @@ def generate_png(update, context):
             "default": base_px,
         }
 
-        # Default examples differ by PSD
         if psd_key == "nalogMex":
             default_amount = "85,349.60 MXN"
             default_dep = "1,349 MXN"
