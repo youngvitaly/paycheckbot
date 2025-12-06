@@ -32,16 +32,10 @@ LASTS = [
 ]
 
 def random_latam_name():
-    """
-    Generate many realistic Latin American name variations by combining
-    first, middle and two last names randomly. This yields thousands of combos.
-    """
     first = random.choice(FIRSTS)
-    # 50% chance to include a middle name
     middle = random.choice(MIDDLES) if random.random() < 0.5 else None
     last1 = random.choice(LASTS)
     last2 = random.choice(LASTS)
-    # avoid identical last names in rare case
     if last2 == last1:
         last2 = random.choice([l for l in LASTS if l != last1])
     parts = [first]
@@ -71,19 +65,9 @@ def sanitize_input(text: str) -> str:
     return cleaned.strip()
 
 def parse_user_date(text: str) -> str:
-    """
-    Accepts user-friendly date/time like:
-      - "01.12.2025,06:26"
-      - "1.12.2025,6:26"
-      - "01.12.2025 06:26"
-      - "2025-12-01,06:26" (fallback)
-    Converts to Spanish format: "Viernes, 1 de diciembre de 2025 a las 06:26 hs"
-    If parsing fails, returns original text (so user can still use freeform).
-    """
     if not text:
         return text
     text = text.strip()
-    # Try pattern DD.MM.YYYY,HH:MM or DD.MM.YYYY HH:MM
     m = re.match(r'^\s*(\d{1,2})\.(\d{1,2})\.(\d{4})\s*[,\s]\s*(\d{1,2}):(\d{2})\s*$', text)
     if m:
         d, mo, y, hh, mm = m.groups()
@@ -97,7 +81,6 @@ def parse_user_date(text: str) -> str:
             return f"{dia_semana}, {dt.day} de {mes_nombre} de {dt.year} a las {dt.strftime('%H:%M')} hs"
         except Exception:
             return text
-    # Try ISO-like YYYY-MM-DD,HH:MM
     m2 = re.match(r'^\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*[,\s]\s*(\d{1,2}):(\d{2})\s*$', text)
     if m2:
         y, mo, d, hh, mm = m2.groups()
@@ -111,7 +94,6 @@ def parse_user_date(text: str) -> str:
             return f"{dia_semana}, {dt.day} de {mes_nombre} de {dt.year} a las {dt.strftime('%H:%M')} hs"
         except Exception:
             return text
-    # If nothing matched, return original text
     return text
 
 def pt_to_px(pt: float, dpi: float = 96.0) -> int:
@@ -119,25 +101,18 @@ def pt_to_px(pt: float, dpi: float = 96.0) -> int:
 
 def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=(0,0,0,255)):
     psd = PSDImage.open(psd_path)
-
-    # Hide original text layers that we will replace (if present)
     for layer in psd.descendants():
         if layer.kind == "type" and layer.name in replacements:
             layer.visible = False
-
     base = psd.composite().convert("RGBA")
     draw = ImageDraw.Draw(base)
-
     for name, text in replacements.items():
         if name in positions:
             x, y = positions[name]
             font_path = fonts.get(name, fonts.get("default"))
             base_size = sizes_px.get(name, sizes_px.get("default", 24))
-
-            # Fixed font size (do not scale)
             font = ImageFont.truetype(font_path, int(base_size))
             draw.text((x, y), text, font=font, fill=color)
-
     os.makedirs(os.path.dirname(outputs["png"]), exist_ok=True)
     base.save(outputs["png"])
     return outputs["png"]
@@ -180,23 +155,22 @@ def _get_field(context, field: str, psd: str, default=None):
 def _set_field(context, field: str, psd: str, value: str):
     context.user_data[_psd_key(psd, field)] = value
 
-# --- Menus and handlers (kept consistent with previous behavior) ---
+# --- Menus helpers ---
 
 def send_and_pin_menu(update_or_query, context):
     keyboard = [
-        [InlineKeyboardButton("📂 Выбрать Исходник (PSD)", callback_data="choose_psd")],
-        [InlineKeyboardButton("🗓 Настроить Дату", callback_data="set_date")],
-        [InlineKeyboardButton("💰 Настроить Сумму", callback_data="set_sum")],
-        [InlineKeyboardButton("👤 Настроить Имя", callback_data="set_client")],
-        [InlineKeyboardButton("🖼 Сгенерировать PNG", callback_data="generate_png")]
+        [InlineKeyboardButton("🖼 arsInvest.psd", callback_data="psd_arsInvest")],
+        [InlineKeyboardButton("🏠 🇩🇴 nalogDom.psd", callback_data="psd_nalogDom")],
+        [InlineKeyboardButton("🇲🇽 nalogMex.psd", callback_data="psd_nalogMex")],
+        [InlineKeyboardButton("🇪🇨 nalogEcua.psd", callback_data="psd_nalogEcua")],
+        [InlineKeyboardButton("📂 Другие шаблоны", callback_data="choose_other")],
+        [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     if hasattr(update_or_query, "message") and update_or_query.message:
         chat_id = update_or_query.message.chat_id
     else:
         chat_id = update_or_query.message.chat_id
-
     try:
         msg = context.bot.send_message(chat_id=chat_id, text="✨ Добро пожаловать!", reply_markup=reply_markup)
     except Exception:
@@ -204,12 +178,10 @@ def send_and_pin_menu(update_or_query, context):
             msg = update_or_query.edit_message_text("✨ Добро пожаловать!", reply_markup=reply_markup)
         except Exception:
             return None
-
     try:
         context.bot.pin_chat_message(chat_id=chat_id, message_id=msg.message_id)
     except Exception:
         pass
-
     track_message(context, msg.message_id)
     context.user_data["menu_message_id"] = msg.message_id
     return msg
@@ -222,18 +194,18 @@ def show_nalog_menu(update_or_query, context):
     if psd == "nalogMex":
         example_amount = "85,349.60 MXN"
         example_tax = "1,349 MXN"
+    elif psd == "nalogEcua":
+        example_amount = "85,349.60 USD"
+        example_tax = "1,349 USD"
     else:
         example_amount = "85,349.60 DOP"
         example_tax = "1,349 DOP"
-
     client_val = _get_field(context, "clientName", psd, "Ana Virginia Mamani Bernal")
     num_val = _get_field(context, "numCuenta", psd, "9843893")
     dep_val = _get_field(context, "depAmount", psd, None)
     amount_val = _get_field(context, "amount", psd, None)
-
     dep_display = _format_display_value(dep_val, "ПУСТО")
     amount_display = _format_display_value(amount_val, "ПУСТО")
-
     header_lines = [
         f"Текущие значения для {psd}.psd:",
         f"• {HUMAN_LABELS['clientName']}: {client_val}",
@@ -244,7 +216,6 @@ def show_nalog_menu(update_or_query, context):
         "Выберите поле для редактирования или экспортируйте PNG:"
     ]
     header_text = "\n".join(header_lines)
-
     keyboard = [
         [InlineKeyboardButton("👤 Настроить Имя", callback_data="nalog_set_name")],
         [InlineKeyboardButton("🆔 Настроить ID", callback_data="nalog_set_id")],
@@ -254,7 +225,6 @@ def show_nalog_menu(update_or_query, context):
         [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     if hasattr(update_or_query, "callback_query") and update_or_query.callback_query:
         try:
             edited = update_or_query.callback_query.edit_message_text(header_text, reply_markup=reply_markup)
@@ -262,20 +232,20 @@ def show_nalog_menu(update_or_query, context):
             return edited
         except Exception:
             pass
-
     if hasattr(update_or_query, "message") and update_or_query.message:
         msg = context.bot.send_message(chat_id=update_or_query.message.chat_id, text=header_text, reply_markup=reply_markup)
         track_message(context, msg.message_id)
         return msg
-
     return None
 
 def show_menu_for_current_psd(update_or_query, context):
     psd = context.user_data.get("psd")
-    if psd in ("nalogDom", "nalogMex"):
+    if psd in ("nalogDom", "nalogMex", "nalogEcua"):
         return show_nalog_menu(update_or_query, context)
     else:
         return send_and_pin_menu(update_or_query, context)
+
+# --- Telegram Handlers and logic ---
 
 def start(update, context):
     welcome = update.message.reply_text("✨ Добро пожаловать!")
@@ -285,13 +255,13 @@ def start(update, context):
 def button(update, context):
     query = update.callback_query
     query.answer()
-
     if query.data == "choose_psd":
         keyboard = [
             [InlineKeyboardButton("🖼 arsInvest.psd", callback_data="psd_arsInvest")],
-            [InlineKeyboardButton("🏠 nalogDom.psd", callback_data="psd_nalogDom")],
+            [InlineKeyboardButton("🏠 🇩🇴 nalogDom.psd", callback_data="psd_nalogDom")],
             [InlineKeyboardButton("🇲🇽 nalogMex.psd", callback_data="psd_nalogMex")],
-            [InlineKeyboardButton("📑 invoice.psd", callback_data="psd_invoice")],
+            [InlineKeyboardButton("🇪🇨 nalogEcua.psd", callback_data="psd_nalogEcua")],
+            [InlineKeyboardButton("📂 Другие шаблоны", callback_data="choose_other")],
             [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -301,7 +271,6 @@ def button(update, context):
         except Exception:
             pass
         return
-
     if query.data.startswith("psd_"):
         context.user_data["psd"] = query.data.replace("psd_", "")
         try:
@@ -309,13 +278,11 @@ def button(update, context):
             track_message(context, edited.message_id)
         except Exception:
             pass
-
-        if context.user_data["psd"] in ("nalogDom", "nalogMex"):
+        if context.user_data["psd"] in ("nalogDom", "nalogMex", "nalogEcua"):
             show_nalog_menu(query, context)
         else:
             send_and_pin_menu(query, context)
         return
-
     if query.data == "set_date":
         context.user_data["awaiting"] = "Date"
         keyboard = [
@@ -334,7 +301,6 @@ def button(update, context):
         except Exception:
             pass
         return
-
     if query.data == "set_sum":
         context.user_data["awaiting"] = "Sum"
         keyboard = [
@@ -353,7 +319,6 @@ def button(update, context):
         except Exception:
             pass
         return
-
     if query.data == "set_client":
         context.user_data["awaiting"] = "clientName"
         keyboard = [
@@ -372,8 +337,7 @@ def button(update, context):
         except Exception:
             pass
         return
-
-    # nalog callbacks (shared for nalogDom and nalogMex)
+    # nalog callbacks
     if query.data == "nalog_set_name":
         context.user_data["awaiting"] = "clientName"
         psd = context.user_data.get("psd", "nalogDom")
@@ -394,7 +358,6 @@ def button(update, context):
         except Exception:
             pass
         return
-
     if query.data == "nalog_set_id":
         context.user_data["awaiting"] = "numCuenta"
         example = "9843893"
@@ -414,11 +377,10 @@ def button(update, context):
         except Exception:
             pass
         return
-
     if query.data == "nalog_set_tax":
         context.user_data["awaiting"] = "depAmount"
         psd = context.user_data.get("psd", "nalogDom")
-        example_tax = "1,349 MXN" if psd == "nalogMex" else "1,349 DOP"
+        example_tax = "1,349 MXN" if psd == "nalogMex" else ("1,349 USD" if psd == "nalogEcua" else "1,349 DOP")
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat=example_tax)],
             [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
@@ -435,11 +397,10 @@ def button(update, context):
         except Exception:
             pass
         return
-
     if query.data == "nalog_set_amount":
         context.user_data["awaiting"] = "amount"
         psd = context.user_data.get("psd", "nalogDom")
-        example_amount = "85,349.60 MXN" if psd == "nalogMex" else "85,349.60 DOP"
+        example_amount = "85,349.60 MXN" if psd == "nalogMex" else ("85,349.60 USD" if psd == "nalogEcua" else "85,349.60 DOP")
         keyboard = [
             [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat=example_amount)],
             [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
@@ -456,22 +417,22 @@ def button(update, context):
         except Exception:
             pass
         return
-
     if query.data == "nalog_export_png":
         generate_png(update, context)
         return
-
     if query.data == "back_to_main":
         context.user_data["awaiting"] = None
         send_and_pin_menu(query, context)
         return
-
     if query.data == "generate_png":
         generate_png(update, context)
         return
-
     if query.data == "back_menu":
         context.user_data["awaiting"] = None
+        send_and_pin_menu(query, context)
+        return
+    if query.data == "choose_other":
+        # Placeholder for other templates; simply return to main menu
         send_and_pin_menu(query, context)
         return
 
@@ -479,15 +440,11 @@ def handle_message(update, context):
     chat_id = update.message.chat_id
     raw_text = update.message.text or ""
     text = sanitize_input(raw_text)
-
     awaiting = context.user_data.get("awaiting")
     current_psd = context.user_data.get("psd", "arsInvest")
-
     if awaiting:
-        # Special handling for Date: accept compact format and convert
         if awaiting == "Date":
             parsed = parse_user_date(text)
-            # store parsed (if parse_user_date returned original text, still store it)
             context.user_data["Date"] = parsed if parsed else text
             context.user_data["awaiting"] = None
             saved = update.message.reply_text("✅ Дата обновлена.")
@@ -499,8 +456,6 @@ def handle_message(update, context):
             preserve.add(update.message.message_id)
             cleanup_messages(context, chat_id, preserve)
             return
-
-        # For nalog fields, save per-PSD
         if awaiting in ("clientName", "numCuenta", "amount", "depAmount"):
             _set_field(context, awaiting, current_psd, text)
             context.user_data["awaiting"] = None
@@ -514,8 +469,6 @@ def handle_message(update, context):
             preserve.add(update.message.message_id)
             cleanup_messages(context, chat_id, preserve)
             return
-
-        # Generic fallback: save to Date
         context.user_data["Date"] = text
         context.user_data["awaiting"] = None
         saved = update.message.reply_text("✅ Введено.")
@@ -527,8 +480,6 @@ def handle_message(update, context):
         preserve.add(update.message.message_id)
         cleanup_messages(context, chat_id, preserve)
         return
-
-    # If not awaiting, treat input as Date by default
     parsed = parse_user_date(text)
     context.user_data["Date"] = parsed if parsed else text
     saved = update.message.reply_text("🗓 Дата обновлена.")
@@ -547,27 +498,21 @@ def generate_png(update, context):
     else:
         chat_id = update.message.chat_id
         origin_message_id = update.message.message_id
-
     date_val = sanitize_input(context.user_data.get("Date", ""))
     sum_val = sanitize_input(context.user_data.get("Sum", ""))
     current_psd = context.user_data.get("psd", "arsInvest")
-
-    # Read per-PSD values
     name_val = _get_field(context, "clientName", current_psd, "")
     num_cuenta_val = _get_field(context, "numCuenta", current_psd, "")
     dep_amount_val = _get_field(context, "depAmount", current_psd, "")
     amount_val = _get_field(context, "amount", current_psd, "")
-
     psd_key = current_psd
-
     fonts = {
         "clientName": "assets/SFPRODISPLAYBOLD.OTF",
         "Sum": "assets/SFPRODISPLAYBOLD.OTF",
         "Date": "assets/SFPRODISPLAYREGULAR.OTF",
         "default": "assets/SFPRODISPLAYREGULAR.OTF",
     }
-
-    if psd_key in ("nalogDom", "nalogMex"):
+    if psd_key in ("nalogDom", "nalogMex", "nalogEcua"):
         fonts.update({
             "clientName": "assets/SFPRODISPLAYMEDIUM.OTF",
             "amount": "assets/SFPRODISPLAYMEDIUM.OTF",
@@ -575,9 +520,7 @@ def generate_png(update, context):
             "depAmount": "assets/SFPRODISPLAYMEDIUM.OTF",
             "default": "assets/SFPRODISPLAYMEDIUM.OTF",
         })
-
     text_color = (44, 44, 44, 255)
-
     if psd_key == "arsInvest":
         psd_path = "assets/arsInvest.psd"
         positions = {
@@ -601,28 +544,23 @@ def generate_png(update, context):
             "Sum": sum_val if sum_val else random_sum(),
             "clientName": name_val if name_val else random_latam_name(),
         }
-
-    elif psd_key in ("nalogDom", "nalogMex"):
+    elif psd_key in ("nalogDom", "nalogMex", "nalogEcua"):
         psd_path = f"assets/{psd_key}.psd"
-
         dpi_for_conversion = 124.472
         base_pt = 9.26
         base_px = pt_to_px(base_pt, dpi=dpi_for_conversion)
-
         positions = {
             "clientName": (699.63, 322.54),
             "numCuenta": (699.63, 366.00),
             "depAmount": (699.63, 411.00),
             "amount": (698.63, 454.00),
         }
-
         widths_px = {
             "clientName": 181.50,
             "numCuenta": 68.82,
             "depAmount": 79.36,
             "amount": 112.18,
         }
-
         sizes_px = {
             "clientName": base_px,
             "numCuenta": base_px,
@@ -630,42 +568,37 @@ def generate_png(update, context):
             "amount": base_px,
             "default": base_px,
         }
-
         if psd_key == "nalogMex":
             default_amount = "85,349.60 MXN"
             default_dep = "1,349 MXN"
+        elif psd_key == "nalogEcua":
+            default_amount = "85,349.60 USD"
+            default_dep = "1,349 USD"
         else:
             default_amount = "85,349.60 DOP"
             default_dep = "1,349 DOP"
-
         replacements = {
             "clientName": name_val if name_val else "Ana Virginia Mamani Bernal",
             "amount": amount_val if amount_val else default_amount,
             "numCuenta": num_cuenta_val if num_cuenta_val else "9843893",
             "depAmount": dep_amount_val if dep_amount_val else default_dep,
         }
-
     else:
         psd_path = f"assets/{psd_key}.psd"
         positions = {}
         sizes_px = {"default": 24}
         widths_px = {}
         replacements = {}
-
     outputs = {"png": "out/render.png"}
     png_file = render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=text_color)
-
     with open(png_file, "rb") as f:
         if hasattr(update, "callback_query") and update.callback_query:
             sent = update.callback_query.message.reply_document(document=InputFile(f, filename="render.png"))
         else:
             sent = update.message.reply_document(document=InputFile(f, filename="render.png"))
-
     track_message(context, sent.message_id)
     context.user_data["last_png_message_id"] = sent.message_id
-
     menu_msg = show_menu_for_current_psd(update.callback_query if hasattr(update, "callback_query") and update.callback_query else update, context)
-
     preserve = {sent.message_id}
     if menu_msg:
         preserve.add(menu_msg.message_id)
@@ -676,10 +609,8 @@ if __name__ == "__main__":
     TOKEN = os.getenv("TOKEN")
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
-
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CallbackQueryHandler(button))
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-
     updater.start_polling()
     updater.idle()
