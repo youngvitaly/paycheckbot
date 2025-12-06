@@ -131,10 +131,23 @@ def send_and_pin_menu(update_or_query, context):
     context.user_data["menu_message_id"] = msg.message_id
     return msg
 
+def _get_nalog_field_values(context):
+    """
+    Возвращает словарь текущих значений для nalog полей,
+    берёт из context.user_data или возвращает дефолты.
+    """
+    return {
+        "clientName": context.user_data.get("clientName", "Ana Virginia Mamani Bernal"),
+        "numCuenta": context.user_data.get("numCuenta", "9843893"),
+        "depAmount": context.user_data.get("depAmount", None),
+        "amount": context.user_data.get("amount", None),
+    }
+
 def show_nalog_menu(update_or_query, context):
     """
     Универсальное меню для nalogDom и nalogMex.
-    Примеры в кнопках зависят от выбранного PSD (context.user_data['psd']).
+    Сверху показывает актуальные значения полей (введённые пользователем или дефолты).
+    Примеры в подсказках зависят от выбранного PSD.
     """
     psd = context.user_data.get("psd", "nalogDom")
     # Примеры по PSD
@@ -144,6 +157,23 @@ def show_nalog_menu(update_or_query, context):
     else:
         example_amount = "85,349.60 DOP"
         example_tax = "1,349 DOP"
+
+    # Текущие значения (покажем None как пустое поле)
+    vals = _get_nalog_field_values(context)
+    # Если depAmount/amount не заданы в user_data — используем PSD-специфичные примеры как подсказку
+    dep_display = vals["depAmount"] if vals["depAmount"] is not None else f"(пример: {example_tax})"
+    amount_display = vals["amount"] if vals["amount"] is not None else f"(пример: {example_amount})"
+
+    header_lines = [
+        f"Текущие значения для {psd}.psd:",
+        f"• Имя: {vals['clientName']}",
+        f"• ID: {vals['numCuenta']}",
+        f"• Налог: {dep_display}",
+        f"• Вывод: {amount_display}",
+        "",
+        "Выберите поле для редактирования или экспортируйте PNG:"
+    ]
+    header_text = "\n".join(header_lines)
 
     keyboard = [
         [InlineKeyboardButton("👤 Настроить Имя", callback_data="nalog_set_name")],
@@ -158,14 +188,14 @@ def show_nalog_menu(update_or_query, context):
     # Редактируем исходное сообщение, если есть callback_query
     if hasattr(update_or_query, "callback_query") and update_or_query.callback_query:
         try:
-            edited = update_or_query.callback_query.edit_message_text("📂 Настройки " + psd + ".psd:", reply_markup=reply_markup)
+            edited = update_or_query.callback_query.edit_message_text(header_text, reply_markup=reply_markup)
             track_message(context, edited.message_id)
             return edited
         except Exception:
             pass
 
     if hasattr(update_or_query, "message") and update_or_query.message:
-        msg = context.bot.send_message(chat_id=update_or_query.message.chat_id, text="📂 Настройки " + psd + ".psd:", reply_markup=reply_markup)
+        msg = context.bot.send_message(chat_id=update_or_query.message.chat_id, text=header_text, reply_markup=reply_markup)
         track_message(context, msg.message_id)
         return msg
 
@@ -280,7 +310,6 @@ def button(update, context):
     # nalog callbacks (shared for nalogDom and nalogMex)
     if query.data == "nalog_set_name":
         context.user_data["awaiting"] = "clientName"
-        # пример зависит от выбранного PSD
         psd = context.user_data.get("psd", "nalogDom")
         example = "Ana Virginia Mamani Bernal"
         keyboard = [
@@ -387,11 +416,13 @@ def handle_message(update, context):
 
     awaiting = context.user_data.get("awaiting")
     if awaiting:
+        # Сохраняем введённое значение в user_data под ключом awaiting
         context.user_data[awaiting] = text
         context.user_data["awaiting"] = None
         saved = update.message.reply_text(f"✅ Слой {awaiting} обновлён.")
         track_message(context, saved.message_id)
 
+        # После сохранения возвращаем меню для текущего PSD (nalogDom/nalogMex или главное)
         menu_msg = show_menu_for_current_psd(update, context)
         preserve = {saved.message_id}
         if menu_msg:
@@ -400,6 +431,7 @@ def handle_message(update, context):
         cleanup_messages(context, chat_id, preserve)
         return
 
+    # Если нет режима ожидания — считаем ввод датой
     context.user_data["Date"] = text
     saved = update.message.reply_text("🗓 Дата обновлена.")
     track_message(context, saved.message_id)
