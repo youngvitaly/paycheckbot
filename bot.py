@@ -23,6 +23,16 @@ LATAM_NAMES = [
     "Paola Andrea Ramírez Ortega"
 ]
 
+# Mapping layer keys -> human labels (for confirmation messages and menu)
+HUMAN_LABELS = {
+    "clientName": "Имя",
+    "numCuenta": "ID",
+    "amount": "Вывод",
+    "depAmount": "Налог",
+    "Date": "Дата",
+    "Sum": "Сумма"
+}
+
 def random_latam_name():
     return random.choice(LATAM_NAMES)
 
@@ -97,6 +107,19 @@ def cleanup_messages(context, chat_id, preserve_ids):
         msgs.discard(mid)
     context.user_data["msg_ids"] = msgs
 
+# --- Helpers for per-PSD storage ---
+
+def _psd_key(psd_name: str, field: str) -> str:
+    """Возвращает ключ для хранения значения field для конкретного PSD."""
+    return f"{psd_name}_{field}"
+
+def _get_field(context, field: str, psd: str, default=None):
+    """Получить значение поля для PSD, если нет — вернуть default."""
+    return context.user_data.get(_psd_key(psd, field), default)
+
+def _set_field(context, field: str, psd: str, value: str):
+    context.user_data[_psd_key(psd, field)] = value
+
 # --- Menus helpers ---
 
 def send_and_pin_menu(update_or_query, context):
@@ -131,23 +154,15 @@ def send_and_pin_menu(update_or_query, context):
     context.user_data["menu_message_id"] = msg.message_id
     return msg
 
-def _get_nalog_field_values(context):
-    """
-    Возвращает словарь текущих значений для nalog полей,
-    берёт из context.user_data или возвращает дефолты.
-    """
-    return {
-        "clientName": context.user_data.get("clientName", "Ana Virginia Mamani Bernal"),
-        "numCuenta": context.user_data.get("numCuenta", "9843893"),
-        "depAmount": context.user_data.get("depAmount", None),
-        "amount": context.user_data.get("amount", None),
-    }
+def _format_display_value(val, fallback):
+    return val if (val is not None and str(val).strip() != "") else fallback
 
 def show_nalog_menu(update_or_query, context):
     """
     Универсальное меню для nalogDom и nalogMex.
     Сверху показывает актуальные значения полей (введённые пользователем или дефолты).
-    Примеры в подсказках зависят от выбранного PSD.
+    Незаполненные поля помечаются как 'ПУСТО'.
+    Кнопки: Имя, ID, Налог, Вывод (налог и вывод поменяны местами).
     """
     psd = context.user_data.get("psd", "nalogDom")
     # Примеры по PSD
@@ -158,28 +173,32 @@ def show_nalog_menu(update_or_query, context):
         example_amount = "85,349.60 DOP"
         example_tax = "1,349 DOP"
 
-    # Текущие значения (покажем None как пустое поле)
-    vals = _get_nalog_field_values(context)
-    # Если depAmount/amount не заданы в user_data — используем PSD-специфичные примеры как подсказку
-    dep_display = vals["depAmount"] if vals["depAmount"] is not None else f"(пример: {example_tax})"
-    amount_display = vals["amount"] if vals["amount"] is not None else f"(пример: {example_amount})"
+    # Текущие значения (берём из per-PSD ключей)
+    client_val = _get_field(context, "clientName", psd, "Ana Virginia Mamani Bernal")
+    num_val = _get_field(context, "numCuenta", psd, "9843893")
+    dep_val = _get_field(context, "depAmount", psd, None)
+    amount_val = _get_field(context, "amount", psd, None)
+
+    dep_display = _format_display_value(dep_val, "ПУСТО")
+    amount_display = _format_display_value(amount_val, "ПУСТО")
 
     header_lines = [
         f"Текущие значения для {psd}.psd:",
-        f"• Имя: {vals['clientName']}",
-        f"• ID: {vals['numCuenta']}",
-        f"• Налог: {dep_display}",
-        f"• Вывод: {amount_display}",
+        f"• {HUMAN_LABELS['clientName']}: {client_val}",
+        f"• {HUMAN_LABELS['numCuenta']}: {num_val}",
+        f"• {HUMAN_LABELS['depAmount']}: {dep_display}",
+        f"• {HUMAN_LABELS['amount']}: {amount_display}",
         "",
         "Выберите поле для редактирования или экспортируйте PNG:"
     ]
     header_text = "\n".join(header_lines)
 
+    # Кнопки: Имя, ID, Налог, Вывод (налог и вывод поменяны местами)
     keyboard = [
         [InlineKeyboardButton("👤 Настроить Имя", callback_data="nalog_set_name")],
         [InlineKeyboardButton("🆔 Настроить ID", callback_data="nalog_set_id")],
-        [InlineKeyboardButton("💸 Настроить Вывод", callback_data="nalog_set_amount")],
         [InlineKeyboardButton("🏷️ Настроить Налог", callback_data="nalog_set_tax")],
+        [InlineKeyboardButton("💸 Настроить Вывод", callback_data="nalog_set_amount")],
         [InlineKeyboardButton("📤 Экспорт PNG", callback_data="nalog_export_png")],
         [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
     ]
@@ -319,7 +338,7 @@ def button(update, context):
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
-                "👤 Введите имя (clientName):\n"
+                "👤 Введите имя (Имя):\n"
                 f'к примеру "{example}"\n\n'
                 "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
@@ -339,29 +358,8 @@ def button(update, context):
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
-                "🔢 Введите ID (numCuenta):\n"
+                "🔢 Введите ID (ID):\n"
                 f'к примеру "{example}"\n\n'
-                "⬅️ Или вернитесь в настройки",
-                reply_markup=reply_markup
-            )
-            track_message(context, edited.message_id)
-        except Exception:
-            pass
-        return
-
-    if query.data == "nalog_set_amount":
-        context.user_data["awaiting"] = "amount"
-        psd = context.user_data.get("psd", "nalogDom")
-        example_amount = "85,349.60 MXN" if psd == "nalogMex" else "85,349.60 DOP"
-        keyboard = [
-            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat=example_amount)],
-            [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        try:
-            edited = query.edit_message_text(
-                "💸 Введите Вывод (amount):\n"
-                f'к примеру "{example_amount}"\n\n'
                 "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
             )
@@ -381,8 +379,29 @@ def button(update, context):
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             edited = query.edit_message_text(
-                "🏷 Введите Налог (depAmount):\n"
+                "🏷 Введите Налог (Налог):\n"
                 f'к примеру "{example_tax}"\n\n'
+                "⬅️ Или вернитесь в настройки",
+                reply_markup=reply_markup
+            )
+            track_message(context, edited.message_id)
+        except Exception:
+            pass
+        return
+
+    if query.data == "nalog_set_amount":
+        context.user_data["awaiting"] = "amount"
+        psd = context.user_data.get("psd", "nalogDom")
+        example_amount = "85,349.60 MXN" if psd == "nalogMex" else "85,349.60 DOP"
+        keyboard = [
+            [InlineKeyboardButton("💡 Скопировать пример", switch_inline_query_current_chat=example_amount)],
+            [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_to_main")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        try:
+            edited = query.edit_message_text(
+                "💸 Введите Вывод (Вывод):\n"
+                f'к примеру "{example_amount}"\n\n'
                 "⬅️ Или вернитесь в настройки",
                 reply_markup=reply_markup
             )
@@ -415,11 +434,16 @@ def handle_message(update, context):
     text = sanitize_input(raw_text)
 
     awaiting = context.user_data.get("awaiting")
+    current_psd = context.user_data.get("psd", "arsInvest")
+
     if awaiting:
-        # Сохраняем введённое значение в user_data под ключом awaiting
-        context.user_data[awaiting] = text
+        # Сохраняем введённое значение в user_data под ключом, специфичным для PSD
+        _set_field(context, awaiting, current_psd, text)
         context.user_data["awaiting"] = None
-        saved = update.message.reply_text(f"✅ Слой {awaiting} обновлён.")
+
+        # Человекочитаемая метка
+        human = HUMAN_LABELS.get(awaiting, awaiting)
+        saved = update.message.reply_text(f"✅ {human} обновлено.")
         track_message(context, saved.message_id)
 
         # После сохранения возвращаем меню для текущего PSD (nalogDom/nalogMex или главное)
@@ -452,12 +476,15 @@ def generate_png(update, context):
 
     date_val = sanitize_input(context.user_data.get("Date", ""))
     sum_val = sanitize_input(context.user_data.get("Sum", ""))
-    name_val = sanitize_input(context.user_data.get("clientName", ""))
-    num_cuenta_val = sanitize_input(context.user_data.get("numCuenta", ""))
-    dep_amount_val = sanitize_input(context.user_data.get("depAmount", ""))
-    amount_val = sanitize_input(context.user_data.get("amount", ""))
+    current_psd = context.user_data.get("psd", "arsInvest")
 
-    psd_key = context.user_data.get("psd", "arsInvest")
+    # Read per-PSD values
+    name_val = _get_field(context, "clientName", current_psd, "")
+    num_cuenta_val = _get_field(context, "numCuenta", current_psd, "")
+    dep_amount_val = _get_field(context, "depAmount", current_psd, "")
+    amount_val = _get_field(context, "amount", current_psd, "")
+
+    psd_key = current_psd
 
     fonts = {
         "clientName": "assets/SFPRODISPLAYBOLD.OTF",
