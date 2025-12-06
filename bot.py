@@ -193,7 +193,7 @@ def show_choose_psd_menu(update_or_query, context):
     # Меню выбора PSD — отдельное, вызывается только при нажатии "Выбрать Исходник"
     keyboard = [
         [InlineKeyboardButton("🖼 arsInvest.psd", callback_data="psd_arsInvest")],
-        [InlineKeyboardButton("🏠 🇩🇴 nalogDom.psd", callback_data="psd_nalogDom")],
+        [InlineKeyboardButton("🇩🇴 nalogDom.psd", callback_data="psd_nalogDom")],
         [InlineKeyboardButton("🇲🇽 nalogMex.psd", callback_data="psd_nalogMex")],
         [InlineKeyboardButton("🇪🇨 nalogEcua.psd", callback_data="psd_nalogEcua")],
         [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_menu")]
