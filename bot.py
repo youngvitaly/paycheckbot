@@ -100,6 +100,9 @@ def pt_to_px(pt: float, dpi: float = 96.0) -> int:
     return int(round(pt * dpi / 72.0))
 
 def render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=(0,0,0,255)):
+    # Проверка наличия PSD
+    if not os.path.isfile(psd_path):
+        raise FileNotFoundError(f"PSD not found: {psd_path}")
     psd = PSDImage.open(psd_path)
     for layer in psd.descendants():
         if layer.kind == "type" and layer.name in replacements:
@@ -158,13 +161,13 @@ def _set_field(context, field: str, psd: str, value: str):
 # --- Menus helpers ---
 
 def send_and_pin_menu(update_or_query, context):
+    # Главное меню — основные действия
     keyboard = [
-        [InlineKeyboardButton("🖼 arsInvest.psd", callback_data="psd_arsInvest")],
-        [InlineKeyboardButton("🏠 🇩🇴 nalogDom.psd", callback_data="psd_nalogDom")],
-        [InlineKeyboardButton("🇲🇽 nalogMex.psd", callback_data="psd_nalogMex")],
-        [InlineKeyboardButton("🇪🇨 nalogEcua.psd", callback_data="psd_nalogEcua")],
-        [InlineKeyboardButton("📂 Другие шаблоны", callback_data="choose_other")],
-        [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
+        [InlineKeyboardButton("📂 Выбрать Исходник (PSD)", callback_data="choose_psd")],
+        [InlineKeyboardButton("🗓 Настроить Дату", callback_data="set_date")],
+        [InlineKeyboardButton("💰 Настроить Сумму", callback_data="set_sum")],
+        [InlineKeyboardButton("👤 Настроить Имя", callback_data="set_client")],
+        [InlineKeyboardButton("🖼 Сгенерировать PNG", callback_data="generate_png")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     if hasattr(update_or_query, "message") and update_or_query.message:
@@ -185,6 +188,28 @@ def send_and_pin_menu(update_or_query, context):
     track_message(context, msg.message_id)
     context.user_data["menu_message_id"] = msg.message_id
     return msg
+
+def show_choose_psd_menu(update_or_query, context):
+    # Меню выбора PSD — отдельное, вызывается только при нажатии "Выбрать Исходник"
+    keyboard = [
+        [InlineKeyboardButton("🖼 arsInvest.psd", callback_data="psd_arsInvest")],
+        [InlineKeyboardButton("🏠 🇩🇴 nalogDom.psd", callback_data="psd_nalogDom")],
+        [InlineKeyboardButton("🇲🇽 nalogMex.psd", callback_data="psd_nalogMex")],
+        [InlineKeyboardButton("🇪🇨 nalogEcua.psd", callback_data="psd_nalogEcua")],
+        [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    try:
+        edited = update_or_query.callback_query.edit_message_text("📂 Выберите исходник (PSD):", reply_markup=reply_markup)
+        track_message(context, edited.message_id)
+        return edited
+    except Exception:
+        # fallback: send new message
+        if hasattr(update_or_query, "message") and update_or_query.message:
+            msg = context.bot.send_message(chat_id=update_or_query.message.chat_id, text="📂 Выберите исходник (PSD):", reply_markup=reply_markup)
+            track_message(context, msg.message_id)
+            return msg
+    return None
 
 def _format_display_value(val, fallback):
     return val if (val is not None and str(val).strip() != "") else fallback
@@ -255,34 +280,29 @@ def start(update, context):
 def button(update, context):
     query = update.callback_query
     query.answer()
+    # choose_psd opens PSD list (separate menu)
     if query.data == "choose_psd":
-        keyboard = [
-            [InlineKeyboardButton("🖼 arsInvest.psd", callback_data="psd_arsInvest")],
-            [InlineKeyboardButton("🏠 🇩🇴 nalogDom.psd", callback_data="psd_nalogDom")],
-            [InlineKeyboardButton("🇲🇽 nalogMex.psd", callback_data="psd_nalogMex")],
-            [InlineKeyboardButton("🇪🇨 nalogEcua.psd", callback_data="psd_nalogEcua")],
-            [InlineKeyboardButton("📂 Другие шаблоны", callback_data="choose_other")],
-            [InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_menu")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        try:
-            edited = query.edit_message_text("📂 Выберите исходник (PSD):", reply_markup=reply_markup)
-            track_message(context, edited.message_id)
-        except Exception:
-            pass
+        show_choose_psd_menu(update, context)
         return
+
+    # PSD selection
     if query.data.startswith("psd_"):
-        context.user_data["psd"] = query.data.replace("psd_", "")
+        selected = query.data.replace("psd_", "")
+        context.user_data["psd"] = selected
         try:
-            edited = query.edit_message_text(f"✅ Выбран PSD: {context.user_data['psd']}")
+            # confirm selection briefly
+            edited = query.edit_message_text(f"✅ Выбран PSD: {selected}")
             track_message(context, edited.message_id)
         except Exception:
             pass
-        if context.user_data["psd"] in ("nalogDom", "nalogMex", "nalogEcua"):
+        # After selecting PSD, return to appropriate menu:
+        if selected in ("nalogDom", "nalogMex", "nalogEcua"):
             show_nalog_menu(query, context)
         else:
+            # For arsInvest and others — return to main menu so user can edit Date/Sum/Name etc.
             send_and_pin_menu(query, context)
         return
+
     if query.data == "set_date":
         context.user_data["awaiting"] = "Date"
         keyboard = [
@@ -301,6 +321,7 @@ def button(update, context):
         except Exception:
             pass
         return
+
     if query.data == "set_sum":
         context.user_data["awaiting"] = "Sum"
         keyboard = [
@@ -319,6 +340,7 @@ def button(update, context):
         except Exception:
             pass
         return
+
     if query.data == "set_client":
         context.user_data["awaiting"] = "clientName"
         keyboard = [
@@ -337,6 +359,7 @@ def button(update, context):
         except Exception:
             pass
         return
+
     # nalog callbacks
     if query.data == "nalog_set_name":
         context.user_data["awaiting"] = "clientName"
@@ -358,6 +381,7 @@ def button(update, context):
         except Exception:
             pass
         return
+
     if query.data == "nalog_set_id":
         context.user_data["awaiting"] = "numCuenta"
         example = "9843893"
@@ -377,6 +401,7 @@ def button(update, context):
         except Exception:
             pass
         return
+
     if query.data == "nalog_set_tax":
         context.user_data["awaiting"] = "depAmount"
         psd = context.user_data.get("psd", "nalogDom")
@@ -397,6 +422,7 @@ def button(update, context):
         except Exception:
             pass
         return
+
     if query.data == "nalog_set_amount":
         context.user_data["awaiting"] = "amount"
         psd = context.user_data.get("psd", "nalogDom")
@@ -417,22 +443,27 @@ def button(update, context):
         except Exception:
             pass
         return
+
     if query.data == "nalog_export_png":
         generate_png(update, context)
         return
+
     if query.data == "back_to_main":
         context.user_data["awaiting"] = None
         send_and_pin_menu(query, context)
         return
+
     if query.data == "generate_png":
         generate_png(update, context)
         return
+
     if query.data == "back_menu":
         context.user_data["awaiting"] = None
         send_and_pin_menu(query, context)
         return
+
     if query.data == "choose_other":
-        # Placeholder for other templates; simply return to main menu
+        # placeholder — возвращаем главное меню
         send_and_pin_menu(query, context)
         return
 
@@ -521,76 +552,86 @@ def generate_png(update, context):
             "default": "assets/SFPRODISPLAYMEDIUM.OTF",
         })
     text_color = (44, 44, 44, 255)
-    if psd_key == "arsInvest":
-        psd_path = "assets/arsInvest.psd"
-        positions = {
-            "Date": (34.6, 190.23),
-            "Sum": (55.52, 286.45),
-            "clientName": (57.72, 693.84),
-        }
-        sizes_px = {
-            "Date": pt_to_px(16.84),
-            "Sum": pt_to_px(27.26),
-            "clientName": pt_to_px(18.9),
-            "default": 24,
-        }
-        widths_px = {
-            "Date": 385.40,
-            "Sum": 194.91,
-            "clientName": 466.93,
-        }
-        replacements = {
-            "Date": date_val if date_val else current_datetime_str(),
-            "Sum": sum_val if sum_val else random_sum(),
-            "clientName": name_val if name_val else random_latam_name(),
-        }
-    elif psd_key in ("nalogDom", "nalogMex", "nalogEcua"):
-        psd_path = f"assets/{psd_key}.psd"
-        dpi_for_conversion = 124.472
-        base_pt = 9.26
-        base_px = pt_to_px(base_pt, dpi=dpi_for_conversion)
-        positions = {
-            "clientName": (699.63, 322.54),
-            "numCuenta": (699.63, 366.00),
-            "depAmount": (699.63, 411.00),
-            "amount": (698.63, 454.00),
-        }
-        widths_px = {
-            "clientName": 181.50,
-            "numCuenta": 68.82,
-            "depAmount": 79.36,
-            "amount": 112.18,
-        }
-        sizes_px = {
-            "clientName": base_px,
-            "numCuenta": base_px,
-            "depAmount": base_px,
-            "amount": base_px,
-            "default": base_px,
-        }
-        if psd_key == "nalogMex":
-            default_amount = "85,349.60 MXN"
-            default_dep = "1,349 MXN"
-        elif psd_key == "nalogEcua":
-            default_amount = "85,349.60 USD"
-            default_dep = "1,349 USD"
+    try:
+        if psd_key == "arsInvest":
+            psd_path = "assets/arsInvest.psd"
+            positions = {
+                "Date": (34.6, 190.23),
+                "Sum": (55.52, 286.45),
+                "clientName": (57.72, 693.84),
+            }
+            sizes_px = {
+                "Date": pt_to_px(16.84),
+                "Sum": pt_to_px(27.26),
+                "clientName": pt_to_px(18.9),
+                "default": 24,
+            }
+            widths_px = {
+                "Date": 385.40,
+                "Sum": 194.91,
+                "clientName": 466.93,
+            }
+            replacements = {
+                "Date": date_val if date_val else current_datetime_str(),
+                "Sum": sum_val if sum_val else random_sum(),
+                "clientName": name_val if name_val else random_latam_name(),
+            }
+        elif psd_key in ("nalogDom", "nalogMex", "nalogEcua"):
+            psd_path = f"assets/{psd_key}.psd"
+            dpi_for_conversion = 124.472
+            base_pt = 9.26
+            base_px = pt_to_px(base_pt, dpi=dpi_for_conversion)
+            positions = {
+                "clientName": (699.63, 322.54),
+                "numCuenta": (699.63, 366.00),
+                "depAmount": (699.63, 411.00),
+                "amount": (698.63, 454.00),
+            }
+            widths_px = {
+                "clientName": 181.50,
+                "numCuenta": 68.82,
+                "depAmount": 79.36,
+                "amount": 112.18,
+            }
+            sizes_px = {
+                "clientName": base_px,
+                "numCuenta": base_px,
+                "depAmount": base_px,
+                "amount": base_px,
+                "default": base_px,
+            }
+            if psd_key == "nalogMex":
+                default_amount = "85,349.60 MXN"
+                default_dep = "1,349 MXN"
+            elif psd_key == "nalogEcua":
+                default_amount = "85,349.60 USD"
+                default_dep = "1,349 USD"
+            else:
+                default_amount = "85,349.60 DOP"
+                default_dep = "1,349 DOP"
+            replacements = {
+                "clientName": name_val if name_val else "Ana Virginia Mamani Bernal",
+                "amount": amount_val if amount_val else default_amount,
+                "numCuenta": num_cuenta_val if num_cuenta_val else "9843893",
+                "depAmount": dep_amount_val if dep_amount_val else default_dep,
+            }
         else:
-            default_amount = "85,349.60 DOP"
-            default_dep = "1,349 DOP"
-        replacements = {
-            "clientName": name_val if name_val else "Ana Virginia Mamani Bernal",
-            "amount": amount_val if amount_val else default_amount,
-            "numCuenta": num_cuenta_val if num_cuenta_val else "9843893",
-            "depAmount": dep_amount_val if dep_amount_val else default_dep,
-        }
-    else:
-        psd_path = f"assets/{psd_key}.psd"
-        positions = {}
-        sizes_px = {"default": 24}
-        widths_px = {}
-        replacements = {}
-    outputs = {"png": "out/render.png"}
-    png_file = render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=text_color)
+            psd_path = f"assets/{psd_key}.psd"
+            positions = {}
+            sizes_px = {"default": 24}
+            widths_px = {}
+            replacements = {}
+        outputs = {"png": "out/render.png"}
+        png_file = render_psd_to_png(psd_path, outputs, replacements, fonts, positions, sizes_px, widths_px, color=text_color)
+    except FileNotFoundError as e:
+        # дружелюбное сообщение, если PSD отсутствует
+        if hasattr(update, "callback_query") and update.callback_query:
+            update.callback_query.message.reply_text(f"Ошибка: шаблон не найден ({e}). Проверьте assets/ и попробуйте снова.")
+        else:
+            update.message.reply_text(f"Ошибка: шаблон не найден ({e}). Проверьте assets/ и попробуйте снова.")
+        # вернём соответствующее меню
+        show_menu_for_current_psd(update.callback_query if hasattr(update, "callback_query") and update.callback_query else update, context)
+        return
     with open(png_file, "rb") as f:
         if hasattr(update, "callback_query") and update.callback_query:
             sent = update.callback_query.message.reply_document(document=InputFile(f, filename="render.png"))
